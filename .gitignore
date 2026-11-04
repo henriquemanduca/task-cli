@@ -1,0 +1,25 @@
+# Binaries and builds
+dist/
+task-cli
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Tests and reports
+*.out
+*.test
+
+# IDE / Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local SQLite databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+tasks.sqlite
