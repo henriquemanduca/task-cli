@@ -299,7 +299,43 @@ func (s *Store) Update(id int64, title, description string) error {
 		return err
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("task with ID %d not found or deleted", id)
+		return ErrTaskNotFound
+	}
+	return nil
+}
+
+// UpdateTaskDetails updates title, description, project_id, and priority of an active task.
+func (s *Store) UpdateTaskDetails(id int64, title, description string, projectID *int64, priority string) error {
+	now := time.Now().UTC()
+	query := `UPDATE tasks SET title = ?, description = ?, project_id = ?, priority = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
+	res, err := s.db.Exec(query, title, description, projectID, priority, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to update task details: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrTaskNotFound
+	}
+	return nil
+}
+
+// UpdateDescription updates only the description of an active task.
+func (s *Store) UpdateDescription(id int64, description string) error {
+	now := time.Now().UTC()
+	query := `UPDATE tasks SET description = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
+	res, err := s.db.Exec(query, description, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to update task description: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrTaskNotFound
 	}
 	return nil
 }
@@ -317,7 +353,7 @@ func (s *Store) UpdateStatus(id int64, status Status, abortReason *string) error
 		return err
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("task with ID %d not found or deleted", id)
+		return ErrTaskNotFound
 	}
 	return nil
 }
@@ -335,7 +371,7 @@ func (s *Store) Delete(id int64) error {
 		return err
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("task with ID %d not found or already deleted", id)
+		return ErrTaskNotFound
 	}
 	return nil
 }

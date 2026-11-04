@@ -5,7 +5,10 @@ DATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 BUILD    := CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)"
 
-.PHONY: build build-all clean test checksums run
+PREFIX   ?= $(HOME)/.local
+BINDIR   ?= $(PREFIX)/bin
+
+.PHONY: build build-all clean test checksums run install uninstall
 
 build:
 	$(BUILD) -o dist/$(APP) .
@@ -20,6 +23,15 @@ build-all: clean
 checksums:
 	cd dist && sha256sum $(APP)-* > checksums.txt
 
+install: build
+	@mkdir -p $(BINDIR)
+	install -m 755 dist/$(APP) $(BINDIR)/$(APP)
+	@echo "Instalado com sucesso em $(BINDIR)/$(APP)"
+
+uninstall:
+	rm -f $(BINDIR)/$(APP)
+	@echo "Removido $(BINDIR)/$(APP)"
+
 test:
 	go test ./...
 
@@ -28,4 +40,3 @@ run:
 
 clean:
 	rm -rf dist
-

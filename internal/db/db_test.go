@@ -84,6 +84,11 @@ func TestStoreOperations(t *testing.T) {
 		t.Fatalf("Update failed: %v", err)
 	}
 
+	// Update task details (change priority)
+	if err := store.UpdateTaskDetails(taskStandalone.ID, "New Standalone Title", "New description", nil, "low"); err != nil {
+		t.Fatalf("UpdateTaskDetails failed: %v", err)
+	}
+
 	// 4. List active tasks
 	tasks, err := store.List("", "")
 	if err != nil {
