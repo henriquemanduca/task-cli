@@ -28,6 +28,42 @@ func summarizeText(text string, maxLen int) string {
 	return clean
 }
 
+// splitFlagsAndPosArgs separa argumentos de flags dos argumentos posicionais,
+// permitindo que flags sejam passadas antes, entre ou depois dos argumentos posicionais.
+func splitFlagsAndPosArgs(args []string, valueFlags map[string]bool) ([]string, []string) {
+	var flagArgs []string
+	var posArgs []string
+	var endOfFlags bool
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if endOfFlags {
+			posArgs = append(posArgs, arg)
+			continue
+		}
+		if arg == "--" {
+			endOfFlags = true
+			continue
+		}
+		if strings.HasPrefix(arg, "-") && arg != "-" {
+			if strings.Contains(arg, "=") {
+				flagArgs = append(flagArgs, arg)
+				continue
+			}
+			flagArgs = append(flagArgs, arg)
+			if valueFlags[arg] {
+				if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+					i++
+					flagArgs = append(flagArgs, args[i])
+				}
+			}
+		} else {
+			posArgs = append(posArgs, arg)
+		}
+	}
+	return flagArgs, posArgs
+}
+
 // TaskAdd adiciona uma nova tarefa ao banco de dados ou cria um projeto caso a flag -p seja informada.
 func TaskAdd(ctx *Context, args []string) error {
 	addCmd := flag.NewFlagSet("add", flag.ContinueOnError)
@@ -42,11 +78,17 @@ func TaskAdd(ctx *Context, args []string) error {
 	addCmd.StringVar(&projectCode, "proj", "", "Project code to link task to")
 	addCmd.StringVar(&priority, "priority", "medium", "Task priority (e.g. low, medium, high)")
 
-	if err := addCmd.Parse(args); err != nil {
+	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
+		"-f":         true,
+		"--filter":   true,
+		"--proj":     true,
+		"--project":  true,
+		"--priority": true,
+	})
+
+	if err := addCmd.Parse(flagArgs); err != nil {
 		return err
 	}
-
-	posArgs := addCmd.Args()
 
 	if isProject {
 		return ProjectAdd(ctx, posArgs)
@@ -104,25 +146,15 @@ func TaskList(ctx *Context, args []string) error {
 	listCmd.StringVar(&statusFlag, "s", "", "Filter tasks by status (shorthand)")
 	listCmd.StringVar(&statusFlag, "status", "", "Filter tasks by status")
 
-	// Separa flags de argumentos posicionais para permitir "list pending -f WEB" ou "list -f WEB pending"
-	var flagsArgs []string
-	var posArgs []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if strings.HasPrefix(arg, "-") {
-			flagsArgs = append(flagsArgs, arg)
-			if arg == "-f" || arg == "--filter" || arg == "--project" || arg == "-s" || arg == "--status" {
-				if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-					i++
-					flagsArgs = append(flagsArgs, args[i])
-				}
-			}
-		} else {
-			posArgs = append(posArgs, arg)
-		}
-	}
+	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
+		"-f":        true,
+		"--filter":  true,
+		"--project": true,
+		"-s":        true,
+		"--status":  true,
+	})
 
-	if err := listCmd.Parse(flagsArgs); err != nil {
+	if err := listCmd.Parse(flagArgs); err != nil {
 		return err
 	}
 
@@ -238,28 +270,24 @@ func TaskUpdate(ctx *Context, args []string) error {
 	updateCmd.StringVar(&projectCode, "project", "", "Move task to project code (or 'none' to detach)")
 	updateCmd.StringVar(&priority, "priority", "", "Update task priority (e.g. low, medium, high)")
 
-	var idStr string
-	var argsToParse []string
+	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
+		"-f":         true,
+		"--filter":   true,
+		"-p":         true,
+		"--project":  true,
+		"--priority": true,
+	})
 
-	if !strings.HasPrefix(args[0], "-") {
-		idStr = args[0]
-		argsToParse = args[1:]
-	} else {
-		argsToParse = args
-	}
-
-	if err := updateCmd.Parse(argsToParse); err != nil {
+	if err := updateCmd.Parse(flagArgs); err != nil {
 		return err
 	}
 
-	posArgs := updateCmd.Args()
-	if idStr == "" {
-		if len(posArgs) < 1 {
-			return fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-p <code>] [--priority <prio>] [title] [description]")
-		}
-		idStr = posArgs[0]
-		posArgs = posArgs[1:]
+	if len(posArgs) < 1 {
+		return fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-f <code>] [--priority <prio>] [title] [description]")
 	}
+
+	idStr := posArgs[0]
+	posArgs = posArgs[1:]
 
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {

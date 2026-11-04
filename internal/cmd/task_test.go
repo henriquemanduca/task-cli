@@ -21,10 +21,29 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatalf("unexpected error creating project via add -p: %v", err)
 	}
 
-	// Add task linked to project via "add -f"
+	// Add task linked to project via "add -f" (flag first)
 	err = TaskAdd(ctx, []string{"-f", "PROJ", "Buy groceries", "Milk, eggs, bread"})
 	if err != nil {
 		t.Fatalf("unexpected error adding task with -f: %v", err)
+	}
+
+	// Add task linked to project with -f at the END (user report case: "add Title Description -f PROJ")
+	err = TaskAdd(ctx, []string{"Teste", "Descricao Teste", "-f", "PROJ"})
+	if err != nil {
+		t.Fatalf("unexpected error adding task with -f at end: %v", err)
+	}
+	tAdded, err := ctx.Store.GetTaskByID(2)
+	if err != nil {
+		t.Fatalf("failed to retrieve task 2: %v", err)
+	}
+	if tAdded.Title != "Teste" {
+		t.Errorf("expected title 'Teste', got '%s'", tAdded.Title)
+	}
+	if tAdded.Description != "Descricao Teste" {
+		t.Errorf("expected description 'Descricao Teste', got '%s'", tAdded.Description)
+	}
+	if tAdded.ProjectCode != "PROJ" {
+		t.Errorf("expected project code 'PROJ', got '%s'", tAdded.ProjectCode)
 	}
 
 	// 2. TaskList
