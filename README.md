@@ -45,10 +45,10 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 
 ```bash
 # Projects
-./dist/task-cli add -p BACKLOG "Product Backlog" "Main project backlog"
-./dist/task-cli list -p
-./dist/task-cli list -p -d # Shows descriptions
-./dist/task-cli list -p -t # Shows creation dates
+./dist/task-cli np BACKLOG "Product Backlog" "Main project backlog"   # alias: project-add
+./dist/task-cli lp                                                     # alias: projects
+./dist/task-cli lp -d  # Shows descriptions
+./dist/task-cli lp -t  # Shows creation dates
 
 # Tasks
 ./dist/task-cli add "Standalone Task" "Not linked to any project"

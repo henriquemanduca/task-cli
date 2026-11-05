@@ -14,7 +14,7 @@ import (
 // ProjectAdd executa a criação de um novo projeto.
 func ProjectAdd(ctx *Context, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("'code' and 'name' are required.\nUsage: task-cli add -p <code> <name> [description]")
+		return fmt.Errorf("'code' and 'name' are required.\nUsage: task-cli project-add <code> <name> [description]")
 	}
 
 	code := strings.TrimSpace(args[0])

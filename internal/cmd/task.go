@@ -69,15 +69,12 @@ func splitFlagsAndPosArgs(args []string, valueFlags map[string]bool) ([]string, 
 	return flagArgs, posArgs
 }
 
-// TaskAdd adiciona uma nova tarefa ao banco de dados ou cria um projeto caso a flag -p seja informada.
+// TaskAdd adiciona uma nova tarefa ao banco de dados.
 func TaskAdd(ctx *Context, args []string) error {
 	addCmd := flag.NewFlagSet("add", flag.ContinueOnError)
-	var isProject bool
 	var projectCode string
 	var priority string
 
-	addCmd.BoolVar(&isProject, "p", false, "Create a project instead of a task")
-	addCmd.BoolVar(&isProject, "project", false, "Create a project instead of a task")
 	addCmd.StringVar(&projectCode, "f", "", "Project code to link task to (shorthand)")
 	addCmd.StringVar(&projectCode, "filter", "", "Project code to link task to")
 	addCmd.StringVar(&projectCode, "proj", "", "Project code to link task to")
@@ -87,16 +84,11 @@ func TaskAdd(ctx *Context, args []string) error {
 		"-f":         true,
 		"--filter":   true,
 		"--proj":     true,
-		"--project":  true,
 		"--priority": true,
 	})
 
 	if err := addCmd.Parse(flagArgs); err != nil {
 		return err
-	}
-
-	if isProject {
-		return ProjectAdd(ctx, posArgs)
 	}
 
 	if len(posArgs) < 1 {
@@ -136,11 +128,10 @@ func TaskAdd(ctx *Context, args []string) error {
 	return nil
 }
 
-// TaskList lista tarefas filtrando por status e/ou projeto, ou lista projetos caso a flag -p seja informada.
+// TaskList lista tarefas filtrando por status e/ou projeto.
 // Por padrão, lista apenas tarefas com status 'pending'.
 func TaskList(ctx *Context, args []string) error {
 	listCmd := flag.NewFlagSet("list", flag.ContinueOnError)
-	var isProject bool
 	var showTime bool
 	var showDesc bool
 	var showAll bool
@@ -148,8 +139,6 @@ func TaskList(ctx *Context, args []string) error {
 	var projectCode string
 	var statusFlag string
 
-	listCmd.BoolVar(&isProject, "p", false, "List all projects")
-	listCmd.BoolVar(&isProject, "projects", false, "List all projects")
 	listCmd.BoolVar(&showTime, "t", false, "Show creation dates")
 	listCmd.BoolVar(&showTime, "time", false, "Show creation dates")
 	listCmd.BoolVar(&showDesc, "d", false, "Show task descriptions")
@@ -175,10 +164,6 @@ func TaskList(ctx *Context, args []string) error {
 
 	if err := listCmd.Parse(flagArgs); err != nil {
 		return err
-	}
-
-	if isProject {
-		return ProjectList(ctx, args)
 	}
 
 	var statusFilter string

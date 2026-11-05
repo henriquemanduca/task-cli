@@ -23,9 +23,9 @@ func printUsage() {
 	fmt.Println("Usage: task-cli [--db <path>] <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
 	fmt.Println("  add <title> [desc] [-f <code>]        Add a new task (optionally linked to a project via -f)")
-	fmt.Println("  add -p <code> <name> [desc]           Create a new project")
+	fmt.Println("  project-add, np <code> <name> [desc]  Create a new project")
 	fmt.Println("  list [status] [-f <code>] [-a] [--done] [-d] [-t]   List tasks (default: pending; -a all, --done done, -f proj)")
-	fmt.Println("  list -p [-d] [-t]                     List all projects (-d show description, -t show dates)")
+	fmt.Println("  projects, lp [-d] [-t]                List all projects (-d show description, -t show dates)")
 	fmt.Println("  view <id> [-t]                        View full task details (optional: -t show timestamps)")
 	fmt.Println("  update <id> [title] [description]     Update a task's title, description, project (-f), priority")
 	fmt.Println("  edit <id>                             Edit task description in an external editor (default: nano)")
@@ -100,10 +100,10 @@ func main() {
 	var cmdErr error
 
 	switch command {
-	case "project-add":
+	case "project-add", "np":
 		cmdErr = cmd.ProjectAdd(ctx, cmdArgs)
 
-	case "projects":
+	case "projects", "lp":
 		cmdErr = cmd.ProjectList(ctx, cmdArgs)
 
 	case "add":

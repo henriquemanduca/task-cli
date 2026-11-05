@@ -15,10 +15,16 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatal("expected error when adding task without title, got nil")
 	}
 
-	// Add project via "add -p"
-	err = TaskAdd(ctx, []string{"-p", "PROJ", "My Project", "Project description"})
+	// Add project via ProjectAdd
+	err = ProjectAdd(ctx, []string{"PROJ", "My Project", "Project description"})
 	if err != nil {
-		t.Fatalf("unexpected error creating project via add -p: %v", err)
+		t.Fatalf("unexpected error creating project: %v", err)
+	}
+
+	// TaskAdd should reject -p flag
+	err = TaskAdd(ctx, []string{"-p", "PROJ2", "Another Project"})
+	if err == nil {
+		t.Fatal("expected error when passing -p to TaskAdd, got nil")
 	}
 
 	// Add task linked to project via "add -f" (flag first)
@@ -47,18 +53,10 @@ func TestTaskCommands(t *testing.T) {
 	}
 
 	// 2. TaskList
-	// List projects via "list -p" and with -t and -d
+	// TaskList should reject -p flag
 	err = TaskList(ctx, []string{"-p"})
-	if err != nil {
-		t.Fatalf("unexpected error listing projects via list -p: %v", err)
-	}
-	err = TaskList(ctx, []string{"-p", "-t"})
-	if err != nil {
-		t.Fatalf("unexpected error listing projects via list -p -t: %v", err)
-	}
-	err = TaskList(ctx, []string{"-p", "-d"})
-	if err != nil {
-		t.Fatalf("unexpected error listing projects via list -p -d: %v", err)
+	if err == nil {
+		t.Fatal("expected error when passing -p to TaskList, got nil")
 	}
 
 	// List tasks (all) with and without -t and -d
