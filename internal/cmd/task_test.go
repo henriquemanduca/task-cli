@@ -47,16 +47,36 @@ func TestTaskCommands(t *testing.T) {
 	}
 
 	// 2. TaskList
-	// List projects via "list -p"
+	// List projects via "list -p" and with -t and -d
 	err = TaskList(ctx, []string{"-p"})
 	if err != nil {
 		t.Fatalf("unexpected error listing projects via list -p: %v", err)
 	}
+	err = TaskList(ctx, []string{"-p", "-t"})
+	if err != nil {
+		t.Fatalf("unexpected error listing projects via list -p -t: %v", err)
+	}
+	err = TaskList(ctx, []string{"-p", "-d"})
+	if err != nil {
+		t.Fatalf("unexpected error listing projects via list -p -d: %v", err)
+	}
 
-	// List tasks (all)
+	// List tasks (all) with and without -t and -d
 	err = TaskList(ctx, []string{})
 	if err != nil {
 		t.Fatalf("unexpected error listing tasks: %v", err)
+	}
+	err = TaskList(ctx, []string{"-t"})
+	if err != nil {
+		t.Fatalf("unexpected error listing tasks with -t: %v", err)
+	}
+	err = TaskList(ctx, []string{"-d"})
+	if err != nil {
+		t.Fatalf("unexpected error listing tasks with -d: %v", err)
+	}
+	err = TaskList(ctx, []string{"-d", "-t"})
+	if err != nil {
+		t.Fatalf("unexpected error listing tasks with -d -t: %v", err)
 	}
 
 	// List tasks filtered by project via "list -f"
@@ -71,15 +91,40 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatalf("unexpected error listing tasks filtered by status and project: %v", err)
 	}
 
+	// List tasks with -a / --all / all
+	err = TaskList(ctx, []string{"-a"})
+	if err != nil {
+		t.Fatalf("unexpected error listing all tasks with -a: %v", err)
+	}
+	err = TaskList(ctx, []string{"--all"})
+	if err != nil {
+		t.Fatalf("unexpected error listing all tasks with --all: %v", err)
+	}
+	err = TaskList(ctx, []string{"all"})
+	if err != nil {
+		t.Fatalf("unexpected error listing all tasks with 'all': %v", err)
+	}
+
+	// List done tasks with --done
+	err = TaskList(ctx, []string{"--done"})
+	if err != nil {
+		t.Fatalf("unexpected error listing done tasks with --done: %v", err)
+	}
+
 	err = TaskList(ctx, []string{"--status", "invalid-status"})
 	if err == nil {
 		t.Fatal("expected error for invalid status, got nil")
 	}
 
-	// 3. TaskView
+	// 3. TaskView (with and without -t)
 	err = TaskView(ctx, []string{"1"})
 	if err != nil {
 		t.Fatalf("unexpected error viewing task: %v", err)
+	}
+
+	err = TaskView(ctx, []string{"1", "-t"})
+	if err != nil {
+		t.Fatalf("unexpected error viewing task with -t: %v", err)
 	}
 
 	err = TaskView(ctx, []string{"999"})
@@ -133,6 +178,12 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatalf("expected status 'done', got %s (err: %v)", t1.Status, err)
 	}
 
+	// Verify task 1 appears in --done list
+	err = TaskList(ctx, []string{"--done"})
+	if err != nil {
+		t.Fatalf("unexpected error listing done tasks: %v", err)
+	}
+
 	err = TaskSetAbort(ctx, []string{"1", "No longer required"})
 	if err != nil {
 		t.Fatalf("unexpected error setting abort: %v", err)
@@ -156,7 +207,31 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatal("expected error for non-numeric ID in set-abort")
 	}
 
-	// 7. TaskDelete
+	// 7. TaskSetPriority
+	err = TaskSetPriority(ctx, []string{"1", "urgent"})
+	if err != nil {
+		t.Fatalf("unexpected error setting priority: %v", err)
+	}
+	t1, err = ctx.Store.GetTaskByID(1)
+	if err != nil || t1.Priority != "urgent" {
+		t.Fatalf("expected priority 'urgent', got %s (err: %v)", t1.Priority, err)
+	}
+
+	// Validation errors for set-prio
+	if err := TaskSetPriority(ctx, []string{}); err == nil {
+		t.Fatal("expected error for empty args in set-prio")
+	}
+	if err := TaskSetPriority(ctx, []string{"1"}); err == nil {
+		t.Fatal("expected error for missing priority in set-prio")
+	}
+	if err := TaskSetPriority(ctx, []string{"1", "invalid-prio"}); err == nil {
+		t.Fatal("expected error for invalid priority value")
+	}
+	if err := TaskSetPriority(ctx, []string{"999", "high"}); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not found error for id 999, got %v", err)
+	}
+
+	// 8. TaskDelete
 	err = TaskDelete(ctx, []string{"1"})
 	if err != nil {
 		t.Fatalf("unexpected error deleting task: %v", err)

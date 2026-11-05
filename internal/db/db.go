@@ -358,6 +358,24 @@ func (s *Store) UpdateStatus(id int64, status Status, abortReason *string) error
 	return nil
 }
 
+// UpdatePriority updates the priority of an active task.
+func (s *Store) UpdatePriority(id int64, priority string) error {
+	now := time.Now().UTC()
+	query := `UPDATE tasks SET priority = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
+	res, err := s.db.Exec(query, priority, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to update task priority: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrTaskNotFound
+	}
+	return nil
+}
+
 // Delete performs a soft delete on a task by setting its deleted_at timestamp.
 func (s *Store) Delete(id int64) error {
 	now := time.Now().UTC()

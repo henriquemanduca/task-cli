@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -36,7 +37,23 @@ func ProjectAdd(ctx *Context, args []string) error {
 }
 
 // ProjectList lista todos os projetos cadastrados.
-func ProjectList(ctx *Context, _ []string) error {
+func ProjectList(ctx *Context, args []string) error {
+	pCmd := flag.NewFlagSet("project-list", flag.ContinueOnError)
+	var showTime bool
+	var showDesc bool
+	pCmd.BoolVar(&showTime, "t", false, "Show creation dates")
+	pCmd.BoolVar(&showTime, "time", false, "Show creation dates")
+	pCmd.BoolVar(&showDesc, "d", false, "Show project description")
+	pCmd.BoolVar(&showDesc, "desc", false, "Show project description")
+	pCmd.BoolVar(&showDesc, "description", false, "Show project description")
+	pCmd.Bool("p", false, "List projects (shorthand)")
+	pCmd.Bool("projects", false, "List projects")
+
+	flagArgs, _ := splitFlagsAndPosArgs(args, nil)
+	if err := pCmd.Parse(flagArgs); err != nil {
+		return err
+	}
+
 	projects, err := ctx.Store.ListProjects()
 	if err != nil {
 		return fmt.Errorf("listing projects: %w", err)
@@ -48,20 +65,36 @@ func ProjectList(ctx *Context, _ []string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "ID\tCODE\tNAME\tDESCRIPTION\tCREATED AT")
-	fmt.Fprintln(w, "--\t----\t----\t-----------\t----------")
+	headers := []string{"ID", "CODE", "NAME"}
+	dividers := []string{"----", "----", "----"}
+	if showDesc {
+		headers = append(headers, "DESCRIPTION")
+		dividers = append(dividers, "-----------")
+	}
+	if showTime {
+		headers = append(headers, "CREATED AT")
+		dividers = append(dividers, "----------")
+	}
+	fmt.Fprintln(w, strings.Join(headers, "\t"))
+	fmt.Fprintln(w, strings.Join(dividers, "\t"))
+
 	for _, p := range projects {
 		desc := p.Description
 		if desc == "" {
 			desc = "-"
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n",
-			p.ID,
+		row := []string{
+			fmt.Sprintf("%04d", p.ID),
 			p.Code,
 			p.Name,
-			desc,
-			p.CreatedAt.Local().Format("2006-01-02 15:04"),
-		)
+		}
+		if showDesc {
+			row = append(row, desc)
+		}
+		if showTime {
+			row = append(row, p.CreatedAt.Local().Format("2006-01-02 15:04"))
+		}
+		fmt.Fprintln(w, strings.Join(row, "\t"))
 	}
 	return w.Flush()
 }

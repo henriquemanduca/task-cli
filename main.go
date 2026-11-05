@@ -24,9 +24,9 @@ func printUsage() {
 	fmt.Println("\nAvailable commands:")
 	fmt.Println("  add <title> [desc] [-f <code>]        Add a new task (optionally linked to a project via -f)")
 	fmt.Println("  add -p <code> <name> [desc]           Create a new project")
-	fmt.Println("  list [status] [-f <code>]             List tasks (optional filter: pending, in-progress, done, abort; project: -f)")
-	fmt.Println("  list -p                               List all projects")
-	fmt.Println("  view <id>                             View full task details and multiline description")
+	fmt.Println("  list [status] [-f <code>] [-a] [--done] [-d] [-t]   List tasks (default: pending; -a all, --done done, -f proj)")
+	fmt.Println("  list -p [-d] [-t]                     List all projects (-d show description, -t show dates)")
+	fmt.Println("  view <id> [-t]                        View full task details (optional: -t show timestamps)")
 	fmt.Println("  update <id> [title] [description]     Update a task's title, description, project (-f), priority")
 	fmt.Println("  edit <id>                             Edit task description in an external editor (default: nano)")
 	fmt.Println("  delete <id>                           Soft delete a task by ID")
@@ -34,6 +34,7 @@ func printUsage() {
 	fmt.Println("  set-in-progress <id>                  Set task status to in-progress")
 	fmt.Println("  set-done <id>                         Set task status to done")
 	fmt.Println("  set-abort <id> [reason]               Set task status to abort (optional reason)")
+	fmt.Println("  set-prio <id> <priority>              Set task priority (low, medium, high, urgent)")
 	fmt.Println("  version                               Display CLI version")
 	fmt.Println("\nOptions:")
 	fmt.Println("  --db <path>                           Custom SQLite database path (default: ~/.task-cli.db)")
@@ -134,6 +135,9 @@ func main() {
 
 	case "set-abort":
 		cmdErr = cmd.TaskSetAbort(ctx, cmdArgs)
+
+	case "set-prio", "set-priority":
+		cmdErr = cmd.TaskSetPriority(ctx, cmdArgs)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)

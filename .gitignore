@@ -22,4 +22,5 @@ task-cli
 *.db-journal
 *.db-wal
 *.db-shm
+
 tasks.sqlite

@@ -13,7 +13,7 @@ import (
 	"task-cli/internal/db"
 )
 
-func summarizeText(text string, maxLen int) string {
+func cleanOneLine(text string) string {
 	clean := strings.ReplaceAll(text, "\r\n", " ")
 	clean = strings.ReplaceAll(clean, "\n", " ")
 	clean = strings.ReplaceAll(clean, "\t", " ")
@@ -21,6 +21,11 @@ func summarizeText(text string, maxLen int) string {
 	if clean == "" {
 		return "-"
 	}
+	return clean
+}
+
+func summarizeText(text string, maxLen int) string {
+	clean := cleanOneLine(text)
 	runes := []rune(clean)
 	if len(runes) > maxLen {
 		return string(runes[:maxLen-3]) + "..."
@@ -132,14 +137,28 @@ func TaskAdd(ctx *Context, args []string) error {
 }
 
 // TaskList lista tarefas filtrando por status e/ou projeto, ou lista projetos caso a flag -p seja informada.
+// Por padrão, lista apenas tarefas com status 'pending'.
 func TaskList(ctx *Context, args []string) error {
 	listCmd := flag.NewFlagSet("list", flag.ContinueOnError)
 	var isProject bool
+	var showTime bool
+	var showDesc bool
+	var showAll bool
+	var showDone bool
 	var projectCode string
 	var statusFlag string
 
 	listCmd.BoolVar(&isProject, "p", false, "List all projects")
 	listCmd.BoolVar(&isProject, "projects", false, "List all projects")
+	listCmd.BoolVar(&showTime, "t", false, "Show creation dates")
+	listCmd.BoolVar(&showTime, "time", false, "Show creation dates")
+	listCmd.BoolVar(&showDesc, "d", false, "Show task descriptions")
+	listCmd.BoolVar(&showDesc, "desc", false, "Show task descriptions")
+	listCmd.BoolVar(&showDesc, "description", false, "Show task descriptions")
+	listCmd.BoolVar(&showAll, "a", false, "List all tasks (any status)")
+	listCmd.BoolVar(&showAll, "all", false, "List all tasks (any status)")
+	listCmd.BoolVar(&showDone, "done", false, "List only completed (done) tasks")
+	listCmd.BoolVar(&showDone, "D", false, "List only completed (done) tasks (shorthand)")
 	listCmd.StringVar(&projectCode, "f", "", "Filter tasks by project code (shorthand)")
 	listCmd.StringVar(&projectCode, "filter", "", "Filter tasks by project code")
 	listCmd.StringVar(&projectCode, "project", "", "Filter tasks by project code")
@@ -159,20 +178,29 @@ func TaskList(ctx *Context, args []string) error {
 	}
 
 	if isProject {
-		return ProjectList(ctx, posArgs)
+		return ProjectList(ctx, args)
 	}
 
-	statusFilter := strings.ToLower(strings.TrimSpace(statusFlag))
-	if len(posArgs) > 0 && statusFilter == "" {
-		statusFilter = strings.ToLower(strings.TrimSpace(posArgs[0]))
+	var statusFilter string
+	posStatus := strings.ToLower(strings.TrimSpace(statusFlag))
+	if len(posArgs) > 0 && posStatus == "" {
+		posStatus = strings.ToLower(strings.TrimSpace(posArgs[0]))
 	}
 
-	if statusFilter != "" {
-		switch db.Status(statusFilter) {
+	if showAll || posStatus == "all" {
+		statusFilter = "" // vazio lista todas no Store.List
+	} else if showDone || posStatus == "done" {
+		statusFilter = string(db.StatusDone)
+	} else if posStatus != "" {
+		switch db.Status(posStatus) {
 		case db.StatusPending, db.StatusInProgress, db.StatusDone, db.StatusAbort:
+			statusFilter = posStatus
 		default:
-			return fmt.Errorf("invalid status '%s'. Valid options: pending, in-progress, done, abort", statusFilter)
+			return fmt.Errorf("invalid status '%s'. Valid options: all, pending, in-progress, done, abort", posStatus)
 		}
+	} else {
+		// Padrão: somente tarefas pendentes
+		statusFilter = string(db.StatusPending)
 	}
 
 	tasks, err := ctx.Store.List(statusFilter, projectCode)
@@ -186,41 +214,69 @@ func TaskList(ctx *Context, args []string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "ID\tPROJECT\tSTATUS\tPRIO\tTITLE\tDESCRIPTION\tCREATED AT")
-	fmt.Fprintln(w, "--\t-------\t------\t----\t-----\t-----------\t----------")
+	headers := []string{"ID", "PROJECT", "STATUS", "PRIO", "TITLE"}
+	dividers := []string{"----", "-------", "------", "----", "-----"}
+	if showDesc {
+		headers = append(headers, "DESCRIPTION")
+		dividers = append(dividers, "-----------")
+	}
+	if showTime {
+		headers = append(headers, "CREATED AT")
+		dividers = append(dividers, "----------")
+	}
+	fmt.Fprintln(w, strings.Join(headers, "\t"))
+	fmt.Fprintln(w, strings.Join(dividers, "\t"))
+
 	for _, t := range tasks {
 		proj := t.ProjectCode
 		if proj == "" {
 			proj = "-"
 		}
-		desc := t.Description
-		if t.AbortReason != nil && *t.AbortReason != "" {
-			desc = fmt.Sprintf("%s (reason: %s)", desc, *t.AbortReason)
-		}
-		descSummary := summarizeText(desc, 50)
-		titleSummary := summarizeText(t.Title, 40)
+		titleClean := cleanOneLine(t.Title)
 
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			t.ID,
+		row := []string{
+			fmt.Sprintf("%04d", t.ID),
 			proj,
-			t.Status,
+			string(t.Status),
 			t.Priority,
-			titleSummary,
-			descSummary,
-			t.CreatedAt.Local().Format("2006-01-02 15:04"),
-		)
+			titleClean,
+		}
+
+		if showDesc {
+			desc := t.Description
+			if t.AbortReason != nil && *t.AbortReason != "" {
+				desc = fmt.Sprintf("%s (reason: %s)", desc, *t.AbortReason)
+			}
+			row = append(row, summarizeText(desc, 50))
+		}
+
+		if showTime {
+			row = append(row, t.CreatedAt.Local().Format("2006-01-02 15:04"))
+		}
+
+		fmt.Fprintln(w, strings.Join(row, "\t"))
 	}
 	return w.Flush()
 }
 
 // TaskView exibe os detalhes completos de uma tarefa.
 func TaskView(ctx *Context, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("task ID is required.\nUsage: task-cli view <id>")
+	viewCmd := flag.NewFlagSet("view", flag.ContinueOnError)
+	var showTime bool
+	viewCmd.BoolVar(&showTime, "t", false, "Show timestamps (created_at, updated_at)")
+	viewCmd.BoolVar(&showTime, "time", false, "Show timestamps (created_at, updated_at)")
+
+	flagArgs, posArgs := splitFlagsAndPosArgs(args, nil)
+	if err := viewCmd.Parse(flagArgs); err != nil {
+		return err
 	}
-	id, err := strconv.ParseInt(args[0], 10, 64)
+
+	if len(posArgs) < 1 {
+		return fmt.Errorf("task ID is required.\nUsage: task-cli view <id> [-t]")
+	}
+	id, err := strconv.ParseInt(posArgs[0], 10, 64)
 	if err != nil {
-		return fmt.Errorf("invalid task ID: %s", args[0])
+		return fmt.Errorf("invalid task ID: %s", posArgs[0])
 	}
 
 	t, err := ctx.Store.GetTaskByID(id)
@@ -236,13 +292,15 @@ func TaskView(ctx *Context, args []string) error {
 		proj = "-"
 	}
 
-	fmt.Printf("Task #%d: %s\n", t.ID, t.Title)
+	fmt.Printf("Task #%04d: %s\n", t.ID, t.Title)
 	fmt.Printf("--------------------------------------------------\n")
 	fmt.Printf("Project:    %s\n", proj)
 	fmt.Printf("Status:     %s\n", t.Status)
 	fmt.Printf("Priority:   %s\n", t.Priority)
-	fmt.Printf("Created At: %s\n", t.CreatedAt.Local().Format("2006-01-02 15:04:05"))
-	fmt.Printf("Updated At: %s\n", t.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
+	if showTime {
+		fmt.Printf("Created At: %s\n", t.CreatedAt.Local().Format("2006-01-02 15:04:05"))
+		fmt.Printf("Updated At: %s\n", t.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
+	}
 	if t.AbortReason != nil && *t.AbortReason != "" {
 		fmt.Printf("Abort Note: %s\n", *t.AbortReason)
 	}
@@ -456,7 +514,7 @@ func setTaskStatus(ctx *Context, args []string, status db.Status, cmdName string
 		return fmt.Errorf("database error: %w", err)
 	}
 
-	fmt.Printf("Task %d status set to '%s'\n", id, status)
+	fmt.Printf("Task %04d status set to '%s'\n", id, status)
 	return nil
 }
 
@@ -502,12 +560,38 @@ func TaskSetAbort(ctx *Context, args []string) error {
 	}
 
 	if abortReason != nil {
-		fmt.Printf("Task %d status set to 'abort' (reason: %s)\n", id, *abortReason)
+		fmt.Printf("Task %04d status set to 'abort' (reason: %s)\n", id, *abortReason)
 	} else {
-		fmt.Printf("Task %d status set to 'abort'\n", id)
+		fmt.Printf("Task %04d status set to 'abort'\n", id)
 	}
 	return nil
 }
 
+// TaskSetPriority define a prioridade de uma tarefa existente (low, medium, high, urgent).
+func TaskSetPriority(ctx *Context, args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("task ID and priority are required.\nUsage: task-cli set-prio <id> <priority>")
+	}
 
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid task ID: %s", args[0])
+	}
 
+	prio := strings.ToLower(strings.TrimSpace(args[1]))
+	switch prio {
+	case "low", "medium", "high", "urgent":
+	default:
+		return fmt.Errorf("invalid priority '%s'. Valid options: low, medium, high, urgent", prio)
+	}
+
+	if err := ctx.Store.UpdatePriority(id, prio); err != nil {
+		if errors.Is(err, db.ErrTaskNotFound) {
+			return fmt.Errorf("task with ID %d not found", id)
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	fmt.Printf("Task %04d priority set to '%s'\n", id, prio)
+	return nil
+}

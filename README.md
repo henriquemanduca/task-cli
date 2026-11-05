@@ -47,22 +47,30 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 # Projects
 ./dist/task-cli add -p BACKLOG "Product Backlog" "Main project backlog"
 ./dist/task-cli list -p
+./dist/task-cli list -p -d # Shows descriptions
+./dist/task-cli list -p -t # Shows creation dates
 
 # Tasks
 ./dist/task-cli add "Standalone Task" "Not linked to any project"
 ./dist/task-cli add -f BACKLOG "Project Task" "Linked to BACKLOG project"
 ./dist/task-cli add -f BACKLOG --priority high "Urgent Task"
-# List tasks (summarized tabular view)
-./dist/task-cli list
-./dist/task-cli list pending
+# List tasks (by default shows pending tasks with full title; use -a for all, --done for completed)
+./dist/task-cli list           # Pending tasks
+./dist/task-cli list -a        # All tasks (any status)
+./dist/task-cli list --done    # Only completed tasks
+./dist/task-cli list -d        # Include description
+./dist/task-cli list -t        # Include creation dates
+./dist/task-cli list -a -d -t  # All tasks with full details
 ./dist/task-cli list in-progress
 ./dist/task-cli list -f BACKLOG
-./dist/task-cli list pending -f BACKLOG
+./dist/task-cli list -a -f BACKLOG
 
-# View full task details (including multiline description paragraphs)
+# View full task details (including multiline description paragraphs; add -t to show timestamps)
 ./dist/task-cli view 1
+./dist/task-cli view 1 -t
 ./dist/task-cli update 1 "Study Go static linking"
 ./dist/task-cli edit 1 # Opens $EDITOR (defaults to nano) to edit description
+./dist/task-cli set-prio 1 high
 ./dist/task-cli set-pending 1
 ./dist/task-cli set-in-progress 1
 ./dist/task-cli set-done 1

@@ -89,6 +89,15 @@ func TestStoreOperations(t *testing.T) {
 		t.Fatalf("UpdateTaskDetails failed: %v", err)
 	}
 
+	// Update priority via UpdatePriority
+	if err := store.UpdatePriority(taskStandalone.ID, "urgent"); err != nil {
+		t.Fatalf("UpdatePriority failed: %v", err)
+	}
+	checkPrioTask, err := store.GetTaskByID(taskStandalone.ID)
+	if err != nil || checkPrioTask.Priority != "urgent" {
+		t.Fatalf("expected priority 'urgent', got %s (err: %v)", checkPrioTask.Priority, err)
+	}
+
 	// 4. List active tasks
 	tasks, err := store.List("", "")
 	if err != nil {

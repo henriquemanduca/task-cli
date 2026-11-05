@@ -74,5 +74,17 @@ func TestProjectList(t *testing.T) {
 	if err := ProjectList(ctx, nil); err != nil {
 		t.Fatalf("unexpected error listing projects: %v", err)
 	}
+
+	if err := ProjectList(ctx, []string{"-t"}); err != nil {
+		t.Fatalf("unexpected error listing projects with -t: %v", err)
+	}
+
+	if err := ProjectList(ctx, []string{"-d"}); err != nil {
+		t.Fatalf("unexpected error listing projects with -d: %v", err)
+	}
+
+	if err := ProjectList(ctx, []string{"-d", "-t"}); err != nil {
+		t.Fatalf("unexpected error listing projects with -d and -t: %v", err)
+	}
 }
 
