@@ -83,6 +83,20 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 ./dist/task-cli docs 1                                        # alias: doc-list
 ./dist/task-cli doc-del 1                                     # alias: doc-remove
 
+# Export & Import (JSON)
+./dist/task-cli export                                        # alias: exp (exports all to stdout)
+./dist/task-cli export --pretty --out backup.json             # Formatted export to file
+./dist/task-cli export -f BACKLOG --out backlog.json          # Export specific project
+./dist/task-cli export --status pending                       # Export tasks with status filter
+./dist/task-cli export --include-deleted                      # Include soft-deleted tasks
+./dist/task-cli export --dry-run                              # Simulate export without writing
+./dist/task-cli import backup.json                            # alias: imp (import from file)
+./dist/task-cli import backup.json --overwrite                # Overwrite metadata for existing projects
+./dist/task-cli import backup.json --dry-run                  # Validate and simulate import
+./dist/task-cli import backup.json --strict                   # Abort on first validation error
+./dist/task-cli import backup.json --force-docs               # Allow duplicate document attachments
+cat backup.json | ./dist/task-cli imp -                       # Import via stdin pipe
+
 # Version and help
 ./dist/task-cli --version
 ./dist/task-cli --help

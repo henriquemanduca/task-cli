@@ -38,6 +38,8 @@ func printUsage() {
 	fmt.Println("  doc-add, attach <id> <path> [name]    Link a document to a task")
 	fmt.Println("  doc-list, docs <id>                   List documents linked to a task")
 	fmt.Println("  doc-del, doc-remove <id>              Remove a linked document by ID")
+	fmt.Println("  export, exp [options]                 Export projects, tasks, and documents to JSON")
+	fmt.Println("  import, imp <file> [options]          Import projects, tasks, and documents from JSON")
 	fmt.Println("  version                               Display CLI version")
 	fmt.Println("\nOptions:")
 	fmt.Println("  --db <path>                           Custom SQLite database path (default: ~/.task-cli.db)")
@@ -100,58 +102,8 @@ func main() {
 	defer store.Close()
 
 	ctx := &cmd.Context{Store: store}
-	var cmdErr error
-
-	switch command {
-	case "project-add", "np":
-		cmdErr = cmd.ProjectAdd(ctx, cmdArgs)
-
-	case "projects", "lp":
-		cmdErr = cmd.ProjectList(ctx, cmdArgs)
-
-	case "add":
-		cmdErr = cmd.TaskAdd(ctx, cmdArgs)
-
-	case "list":
-		cmdErr = cmd.TaskList(ctx, cmdArgs)
-
-	case "view", "show":
-		cmdErr = cmd.TaskView(ctx, cmdArgs)
-
-	case "update":
-		cmdErr = cmd.TaskUpdate(ctx, cmdArgs)
-
-	case "edit":
-		cmdErr = cmd.TaskEdit(ctx, cmdArgs)
-
-	case "delete":
-		cmdErr = cmd.TaskDelete(ctx, cmdArgs)
-
-	case "set-pending":
-		cmdErr = cmd.TaskSetPending(ctx, cmdArgs)
-
-	case "set-in-progress":
-		cmdErr = cmd.TaskSetInProgress(ctx, cmdArgs)
-
-	case "set-done":
-		cmdErr = cmd.TaskSetDone(ctx, cmdArgs)
-
-	case "set-abort":
-		cmdErr = cmd.TaskSetAbort(ctx, cmdArgs)
-
-	case "set-prio", "set-priority":
-		cmdErr = cmd.TaskSetPriority(ctx, cmdArgs)
-
-	case "doc-add", "attach":
-		cmdErr = cmd.DocAdd(ctx, cmdArgs)
-
-	case "doc-list", "docs":
-		cmdErr = cmd.DocList(ctx, cmdArgs)
-
-	case "doc-del", "doc-rm", "doc-remove":
-		cmdErr = cmd.DocDelete(ctx, cmdArgs)
-
-	default:
+	handled, cmdErr := cmd.Execute(ctx, command, cmdArgs)
+	if !handled {
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
 		printUsage()
 		os.Exit(1)
