@@ -77,6 +77,12 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 ./dist/task-cli set-abort 1 "Out of scope"
 ./dist/task-cli delete 1
 
+# Document attachments
+./dist/task-cli attach 1 /path/to/spec.pdf                     # alias: doc-add
+./dist/task-cli attach 1 ./notes.txt "Meeting Notes"
+./dist/task-cli docs 1                                        # alias: doc-list
+./dist/task-cli doc-del 1                                     # alias: doc-remove
+
 # Version and help
 ./dist/task-cli --version
 ./dist/task-cli --help

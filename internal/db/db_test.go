@@ -158,4 +158,61 @@ func TestStoreOperations(t *testing.T) {
 	if len(activeTasks) != 1 {
 		t.Fatalf("expected 1 active task after soft delete, got %d", len(activeTasks))
 	}
+
+	// 8. Documents operations
+	// Adding document to soft-deleted task should fail
+	if _, err := store.AddDocument(taskStandalone.ID, "spec.pdf", "pdf", "/tmp/spec.pdf"); !errors.Is(err, ErrTaskNotFound) {
+		t.Fatalf("expected ErrTaskNotFound when adding doc to soft-deleted task, got: %v", err)
+	}
+
+	// Add document to active task
+	doc1, err := store.AddDocument(taskProject.ID, "spec.pdf", "pdf", "/home/user/spec.pdf")
+	if err != nil {
+		t.Fatalf("AddDocument failed: %v", err)
+	}
+	if doc1.Name != "spec.pdf" || doc1.Type != "pdf" || doc1.FilePath != "/home/user/spec.pdf" {
+		t.Errorf("unexpected document data: %+v", doc1)
+	}
+
+	doc2, err := store.AddDocument(taskProject.ID, "diagram.png", "image/png", "/home/user/diagram.png")
+	if err != nil {
+		t.Fatalf("AddDocument 2 failed: %v", err)
+	}
+
+	// List documents
+	docs, err := store.ListDocuments(taskProject.ID)
+	if err != nil {
+		t.Fatalf("ListDocuments failed: %v", err)
+	}
+	if len(docs) != 2 {
+		t.Fatalf("expected 2 documents, got %d", len(docs))
+	}
+
+	// GetDocumentByID
+	foundDoc, err := store.GetDocumentByID(doc1.ID)
+	if err != nil {
+		t.Fatalf("GetDocumentByID failed: %v", err)
+	}
+	if foundDoc.Name != doc1.Name || foundDoc.FilePath != doc1.FilePath {
+		t.Errorf("expected doc matching %+v, got %+v", doc1, foundDoc)
+	}
+
+	if _, err := store.GetDocumentByID(99999); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("expected ErrDocumentNotFound, got %v", err)
+	}
+
+	// Delete document
+	if err := store.DeleteDocument(doc1.ID); err != nil {
+		t.Fatalf("DeleteDocument failed: %v", err)
+	}
+	if _, err := store.GetDocumentByID(doc1.ID); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("expected ErrDocumentNotFound after deletion, got %v", err)
+	}
+	docsAfterDel, err := store.ListDocuments(taskProject.ID)
+	if err != nil {
+		t.Fatalf("ListDocuments after delete failed: %v", err)
+	}
+	if len(docsAfterDel) != 1 || docsAfterDel[0].ID != doc2.ID {
+		t.Fatalf("expected 1 document (%d) remaining, got %+v", doc2.ID, docsAfterDel)
+	}
 }

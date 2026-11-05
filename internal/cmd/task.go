@@ -295,6 +295,15 @@ func TaskView(ctx *Context, args []string) error {
 	} else {
 		fmt.Println(t.Description)
 	}
+
+	docs, err := ctx.Store.ListDocuments(t.ID)
+	if err == nil && len(docs) > 0 {
+		fmt.Printf("\nAttached Documents (%d):\n", len(docs))
+		for _, d := range docs {
+			fmt.Printf("  [%d] %s (%s): %s\n", d.ID, d.Name, d.Type, d.FilePath)
+		}
+	}
+
 	return nil
 }
 

@@ -16,6 +16,7 @@ var (
 	ErrProjectCodeExists = errors.New("project code already exists")
 	ErrProjectNotFound   = errors.New("project not found")
 	ErrTaskNotFound      = errors.New("task not found")
+	ErrDocumentNotFound  = errors.New("document not found")
 )
 
 type Status string
@@ -48,6 +49,15 @@ type Task struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
+}
+
+type Document struct {
+	ID        int64
+	TaskID    int64
+	Name      string
+	Type      string
+	FilePath  string
+	CreatedAt time.Time
 }
 
 type Store struct {
@@ -108,6 +118,17 @@ func NewStore(dbPath string) (*Store, error) {
 		updated_at DATETIME NOT NULL,
 		deleted_at DATETIME
 	);
+
+	CREATE TABLE IF NOT EXISTS documents (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		name TEXT NOT NULL,
+		type TEXT NOT NULL,
+		file_path TEXT NOT NULL,
+		created_at DATETIME NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_documents_task_id ON documents(task_id);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
@@ -390,6 +411,90 @@ func (s *Store) Delete(id int64) error {
 	}
 	if rowsAffected == 0 {
 		return ErrTaskNotFound
+	}
+	return nil
+}
+
+// AddDocument links a new document to a task.
+func (s *Store) AddDocument(taskID int64, name, docType, filePath string) (*Document, error) {
+	if _, err := s.GetTaskByID(taskID); err != nil {
+		return nil, err
+	}
+
+	name = strings.TrimSpace(name)
+	docType = strings.TrimSpace(docType)
+	filePath = strings.TrimSpace(filePath)
+
+	now := time.Now().UTC()
+	query := `INSERT INTO documents (task_id, name, type, file_path, created_at) VALUES (?, ?, ?, ?, ?)`
+	res, err := s.db.Exec(query, taskID, name, docType, filePath, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert document: %w", err)
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last inserted document ID: %w", err)
+	}
+
+	return &Document{
+		ID:        id,
+		TaskID:    taskID,
+		Name:      name,
+		Type:      docType,
+		FilePath:  filePath,
+		CreatedAt: now,
+	}, nil
+}
+
+// ListDocuments returns all documents linked to a task.
+func (s *Store) ListDocuments(taskID int64) ([]Document, error) {
+	query := `SELECT id, task_id, name, type, file_path, created_at FROM documents WHERE task_id = ? ORDER BY id ASC`
+	rows, err := s.db.Query(query, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query documents: %w", err)
+	}
+	defer rows.Close()
+
+	var docs []Document
+	for rows.Next() {
+		var d Document
+		if err := rows.Scan(&d.ID, &d.TaskID, &d.Name, &d.Type, &d.FilePath, &d.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan document: %w", err)
+		}
+		docs = append(docs, d)
+	}
+	return docs, rows.Err()
+}
+
+// GetDocumentByID returns a document by its ID.
+func (s *Store) GetDocumentByID(id int64) (*Document, error) {
+	query := `SELECT id, task_id, name, type, file_path, created_at FROM documents WHERE id = ?`
+	row := s.db.QueryRow(query, id)
+
+	var d Document
+	if err := row.Scan(&d.ID, &d.TaskID, &d.Name, &d.Type, &d.FilePath, &d.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrDocumentNotFound
+		}
+		return nil, fmt.Errorf("failed to query document by id: %w", err)
+	}
+	return &d, nil
+}
+
+// DeleteDocument removes a document link by ID.
+func (s *Store) DeleteDocument(id int64) error {
+	query := `DELETE FROM documents WHERE id = ?`
+	res, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete document: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrDocumentNotFound
 	}
 	return nil
 }

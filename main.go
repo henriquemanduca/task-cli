@@ -35,6 +35,9 @@ func printUsage() {
 	fmt.Println("  set-done <id>                         Set task status to done")
 	fmt.Println("  set-abort <id> [reason]               Set task status to abort (optional reason)")
 	fmt.Println("  set-prio <id> <priority>              Set task priority (low, medium, high, urgent)")
+	fmt.Println("  doc-add, attach <id> <path> [name]    Link a document to a task")
+	fmt.Println("  doc-list, docs <id>                   List documents linked to a task")
+	fmt.Println("  doc-del, doc-remove <id>              Remove a linked document by ID")
 	fmt.Println("  version                               Display CLI version")
 	fmt.Println("\nOptions:")
 	fmt.Println("  --db <path>                           Custom SQLite database path (default: ~/.task-cli.db)")
@@ -138,6 +141,15 @@ func main() {
 
 	case "set-prio", "set-priority":
 		cmdErr = cmd.TaskSetPriority(ctx, cmdArgs)
+
+	case "doc-add", "attach":
+		cmdErr = cmd.DocAdd(ctx, cmdArgs)
+
+	case "doc-list", "docs":
+		cmdErr = cmd.DocList(ctx, cmdArgs)
+
+	case "doc-del", "doc-rm", "doc-remove":
+		cmdErr = cmd.DocDelete(ctx, cmdArgs)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
