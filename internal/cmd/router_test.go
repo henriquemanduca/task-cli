@@ -547,9 +547,19 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 		t.Fatalf("expected handled=true, err=nil for Execute('task', ['list']), got handled=%v, err=%v", handled, err)
 	}
 
-	// 13. Backwards compatibility: Execute fallback to Registry for flat "add"
-	handled, err = Execute(ctx, "add", []string{"Flat Add Task", "From Registry"})
-	if !handled || err != nil {
-		t.Fatalf("expected handled=true for flat 'add' fallback, got handled=%v, err=%v", handled, err)
+	// 13. Legacy flat commands without group must not be handled
+	handled, _ = Execute(ctx, "add", []string{"Flat Add Task"})
+	if handled {
+		t.Fatal("expected handled=false for legacy flat 'add', domain 'task' is required")
+	}
+
+	handled, _ = Execute(ctx, "list", []string{})
+	if handled {
+		t.Fatal("expected handled=false for legacy flat 'list', domain 'task' or 'project' is required")
+	}
+
+	handled, _ = Execute(ctx, "projects", []string{})
+	if handled {
+		t.Fatal("expected handled=false for legacy flat 'projects', domain 'project' is required")
 	}
 }

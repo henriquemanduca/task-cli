@@ -67,11 +67,6 @@ task-cli task status 1 abort "Out of scope"
 task-cli task status 1          # view current task status
 task-cli task done 1            # shorthand to mark done
 task-cli task delete 1          # soft delete (aliases: del, rm, remove)
-
-task-cli add "Standalone Task"  # legacy shorthand
-task-cli list                   # legacy shorthand
-task-cli view 1                 # legacy shorthand
-task-cli set-done 1             # legacy shorthand
 ```
 
 ## Document attachments
@@ -109,24 +104,24 @@ warnings unless `--strict`.
 
 ## TSV output & scripting
 
-`lp` and `list` emit tab-separated values with a header row by default
+`task list` and `project list` emit tab-separated values with a header row by default
 (`-n` / `--no-header` suppresses it). No header is printed when there are
 zero rows.
 
 ```
-# list columns:  id  project  status  priority  title  [description]  [created_at]
-# lp columns:    id  code  name  [description]  [created_at]
+# task list columns:    id  project  status  priority  title  [created_at]
+# project list columns: id  code     name    [description]   [created_at]
 ```
 
 ```bash
-task-cli list -a -n | cut -f4 | sort | uniq -c                    # count by priority
-task-cli list -a -n -p BACKLOG | awk -F'\t' '$3=="in-progress"'   # filter rows
-task-cli list -a | column -t -s $'\t'                             # human-readable table
+task-cli task list -a -n | cut -f4 | sort | uniq -c                    # count by priority
+task-cli task list -a -n -p BACKLOG | awk -F'\t' '$3=="in-progress"'   # filter rows
+task-cli task list -a | column -t -s $'\t'                             # human-readable table
 ```
 
 ## Gotchas
 
-- `list` with no arguments shows **pending** tasks only; use `-a` for everything.
+- `task list` with no arguments shows **pending** tasks only; use `-a` for everything.
 - `delete` is a soft delete; deleted tasks are hidden from lists and exports
   unless `export --include-deleted`.
 - Flags can appear before or after positional arguments.

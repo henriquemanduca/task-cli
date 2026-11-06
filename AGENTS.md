@@ -18,13 +18,13 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 ## Architecture
 
 - `main.go` — global `--db`/`--version` flags, usage text, dispatch.
-- `internal/cmd/` — one handler per command/alias. `cmd.go` holds the `Registry`; `task.go`, `project.go`, `doc.go`, and `io.go` contain handlers.
+- `internal/cmd/` — hierarchical command routing via `Root` in `router.go`; `task.go`, `project.go`, `doc.go`, and `io.go` contain handlers.
 - `internal/db/db.go` — SQLite store, schema, CRUD; `internal/db/transfer.go` — JSON import/export.
-- Adding a command requires a handler `func(*cmd.Context, []string) error`, an entry in `cmd.Registry`, and updates to `README.md`, `main.go:printUsage`, and `SKILL.md` (these are separate and drift easily).
+- Adding a command requires a handler `func(*cmd.Context, []string) error`, registration in `cmd.Root` (`internal/cmd/router.go`), and updates to `README.md`, `main.go:printUsage`, and `SKILL.md` (these are separate and drift easily).
 
 ## CLI gotchas
 
-- Global `--db` must appear before the subcommand (`task-cli --db /tmp/x.db list`); after it, it is parsed as a command flag and fails.
+- Global `--db` must appear before the subcommand (`task-cli --db /tmp/x.db task list`); after it, it is parsed as a command flag and fails.
 - Default DB is `~/.task-cli.db`; override with `TASK_CLI_DB` or `--db`. Always use a temp DB when manually exercising commands.
 - Each command parses its own `flag.FlagSet`. `splitFlagsAndPosArgs` lets flags appear before or after positionals, but every value-taking flag must be listed in that command's `valueFlags` map or its value becomes a positional argument.
 - Project filters: `add`/`list`/`update` use `-p/--project`; `export` accepts `-f/--filter/--project/--proj` but not `-p` (README's `export -p ...` example is wrong).

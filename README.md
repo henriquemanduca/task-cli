@@ -88,10 +88,6 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 ./dist/task-cli task status 1                     # View current status
 ./dist/task-cli task done 1                       # Helper to mark done
 ./dist/task-cli task delete 1                     # Soft delete (alias: del, rm, remove)
-./dist/task-cli add "Standalone Task"             # legacy shorthand
-./dist/task-cli list -F table                     # legacy shorthand
-./dist/task-cli view 1                            # legacy shorthand
-./dist/task-cli set-done 1                        # legacy shorthand
 
 # Document attachments
 ./dist/task-cli attach 1 /path/to/spec.pdf                     # alias: doc-add
@@ -120,13 +116,13 @@ cat backup.json | ./dist/task-cli imp -                       # Import via stdin
 
 ## Output Formats (TSV & Table)
 
-`lp` and `list` emit tab-separated values (TSV) by default with a header row, designed for unix pipes and scripts.
+`task list` and `project list` emit tab-separated values (TSV) by default with a header row, designed for unix pipes and scripts.
 
 ```
-# list output columns (task descriptions are viewed via 'view' or 'show'):
+# task list output columns (task descriptions are viewed via 'view' or 'show'):
 id  project  status  priority  title  [created_at]
 
-# lp output columns:
+# project list output columns:
 id  code  name  [description]  [created_at]
 ```
 
@@ -134,19 +130,19 @@ Use `-F table` (or `--format table`) for an aligned, human-readable view:
 
 ```bash
 # human-readable aligned table view
-task-cli list -F table
-task-cli lp -F table
+task-cli task list -F table
+task-cli project list -F table
 
 # with date timestamps
-task-cli list -a -t -F table
+task-cli task list -a -t -F table
 ```
 
 Suppress the header with `-n` / `--no-header` for clean piping:
 
 ```bash
 # count tasks by priority
-task-cli list -a -n | cut -f4 | sort | uniq -c
+task-cli task list -a -n | cut -f4 | sort | uniq -c
 
 # filter in-progress tasks in a project
-task-cli list -a -n -p BACKLOG | awk -F'\t' '$3=="in-progress"'
+task-cli task list -a -n -p BACKLOG | awk -F'\t' '$3=="in-progress"'
 ```

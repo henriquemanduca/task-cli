@@ -117,13 +117,9 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatalf("unexpected error viewing task: %v", err)
 	}
 
-	showHandler, ok := Registry["show"]
-	if !ok {
-		t.Fatal("expected 'show' command to be registered in Registry")
-	}
-	err = showHandler(ctx, []string{"1"})
+	err = Root.Execute(ctx, []string{"task", "show", "1"})
 	if err != nil {
-		t.Fatalf("unexpected error viewing task with show: %v", err)
+		t.Fatalf("unexpected error viewing task with show alias: %v", err)
 	}
 
 	err = TaskView(ctx, []string{"1", "-t"})
