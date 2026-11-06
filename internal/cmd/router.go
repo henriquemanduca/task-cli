@@ -18,10 +18,21 @@ type Command struct {
 	Description string
 	Usage       string
 	Run         CommandFunc
+	Handler     Handler
 	Subcommands []*Command
 
 	parent *Command
 	out    io.Writer
+}
+
+// SetHandler configures a Handler for this command, synchronizing Run.
+func (c *Command) SetHandler(h Handler) {
+	c.Handler = h
+	if h != nil {
+		c.Run = h.Run
+	} else {
+		c.Run = nil
+	}
 }
 
 // AddCommand registers child subcommands under this command.
@@ -164,13 +175,20 @@ func (c *Command) Execute(ctx *Context, args []string) error {
 	}
 
 	// If target has no runner (parent / aggregator node)
-	if target.Run == nil {
+	if target.Run == nil && target.Handler == nil {
 		if len(remaining) == 0 || (len(remaining) == 1 && remaining[0] == "help") {
 			return target.PrintHelp(nil)
 		}
 		return fmt.Errorf("%w: %s for %s", ErrUnknownCommand, remaining[0], target.CommandPath())
 	}
 
+	if ctx != nil && ctx.Out == nil && target.out != nil {
+		ctx.Out = target.Out()
+	}
+
+	if target.Handler != nil {
+		return target.Handler.Run(ctx, remaining)
+	}
 	return target.Run(ctx, remaining)
 }
 

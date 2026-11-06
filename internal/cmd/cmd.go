@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"io"
+	"os"
+
 	"task-cli/internal/db"
 )
 
@@ -9,6 +12,16 @@ type Context struct {
 	Store  *db.Store
 	DBPath string
 	Format string
+	Out    io.Writer
+}
+
+// OutWriter returns the configured output writer for the context,
+// or defaults to os.Stdout if unset.
+func (c *Context) OutWriter() io.Writer {
+	if c != nil && c.Out != nil {
+		return c.Out
+	}
+	return os.Stdout
 }
 
 // CommandFunc defines the function signature for subcommands.
