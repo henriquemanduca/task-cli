@@ -123,6 +123,30 @@ func (c *Command) Resolve(args []string) (*Command, []string) {
 // Execute resolves arguments against the command tree and runs the target command,
 // handling hierarchical help and argument delegation.
 func (c *Command) Execute(ctx *Context, args []string) error {
+	if c == Root {
+		gf, filteredArgs, err := ParseGlobalFlags(args)
+		if err != nil {
+			return err
+		}
+		if ctx != nil {
+			if gf.Format != "" {
+				ctx.Format = gf.Format
+			}
+			if gf.DBPath != "" {
+				ctx.DBPath = gf.DBPath
+				if ctx.Store == nil {
+					store, path, err := ResolveStore(gf.DBPath)
+					if err != nil {
+						return err
+					}
+					ctx.Store = store
+					ctx.DBPath = path
+				}
+			}
+		}
+		args = filteredArgs
+	}
+
 	// Check for top-level help keyword (e.g. "help <subcommand>")
 	if len(args) > 0 && args[0] == "help" {
 		if len(args) == 1 {
@@ -266,9 +290,40 @@ func NewRootCommand() *Command {
 	taskCmd := &Command{
 		Name:        "task",
 		Aliases:     []string{"t", "tsk"},
-		Description: "Manage tasks (creation, listing, update, status)",
+		Description: "Manage tasks (creation, listing, update, status, doc)",
 	}
+
+	docCmd := &Command{
+		Name:        "doc",
+		Aliases:     []string{"docs", "d"},
+		Description: "Manage task document attachments (add, list, remove)",
+	}
+	docCmd.AddCommand(
+		&Command{
+			Name:        "add",
+			Aliases:     []string{"attach"},
+			Description: "Link a document to a task",
+			Usage:       "task-cli task doc add <task_id> <file_path> [name] [--type <type>]",
+			Run:         DocAdd,
+		},
+		&Command{
+			Name:        "list",
+			Aliases:     []string{"ls"},
+			Description: "List documents linked to a task",
+			Usage:       "task-cli task doc list <task_id>",
+			Run:         DocList,
+		},
+		&Command{
+			Name:        "remove",
+			Aliases:     []string{"rm", "del", "delete"},
+			Description: "Remove a linked document by ID",
+			Usage:       "task-cli task doc remove <doc_id>",
+			Run:         DocDelete,
+		},
+	)
+
 	taskCmd.AddCommand(
+		docCmd,
 		&Command{
 			Name:        "add",
 			Aliases:     []string{"create", "new"},

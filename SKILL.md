@@ -18,9 +18,9 @@ binary, or `./dist/task-cli` from a source checkout (`make build`).
 ## Database
 
 - Default DB: `~/.task-cli.db`. Override with `TASK_CLI_DB` env var or `--db`.
-- The global `--db` flag must come **before** the subcommand:
-  `task-cli --db /tmp/x.db list`. After the subcommand it is parsed as a
-  command flag and fails.
+- Global flags `--db` and `-F/--format` are transversal and can appear anywhere
+  before, between, or after subcommands: `task-cli --db /tmp/x.db task list` or
+  `task-cli task list --db /tmp/x.db -F table`.
 - Use a throwaway DB (`--db /tmp/...`) when testing or demonstrating commands.
 
 ## Projects
@@ -74,10 +74,10 @@ task-cli task delete 1          # soft delete (aliases: del, rm, remove)
 `attach` stores only the file's absolute path; it does not copy the document.
 
 ```bash
-task-cli attach 1 /path/to/spec.pdf              # alias: doc-add
-task-cli attach 1 ./notes.txt "Meeting Notes"
-task-cli docs 1                                  # alias: doc-list
-task-cli doc-del 1                               # alias: doc-remove
+task-cli task doc add 1 /path/to/spec.pdf              # alias: attach, doc-add
+task-cli task doc add 1 ./notes.txt "Meeting Notes"
+task-cli task doc list 1                              # alias: docs, doc-list, ls
+task-cli task doc remove 1                            # alias: doc-del, doc-remove, del, rm
 ```
 
 ## Export & Import (JSON)

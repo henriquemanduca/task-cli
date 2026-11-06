@@ -36,7 +36,7 @@ func DocAdd(ctx *Context, args []string) error {
 	}
 
 	if len(posArgs) < 2 {
-		return fmt.Errorf("task ID and file path are required.\nUsage: task-cli doc-add <task_id> <file_path> [name] [--type <type>]")
+		return fmt.Errorf("task ID and file path are required.\nUsage: task-cli task doc add <task_id> <file_path> [name] [--type <type>]")
 	}
 
 	taskID, err := strconv.ParseInt(posArgs[0], 10, 64)
@@ -90,7 +90,7 @@ func DocAdd(ctx *Context, args []string) error {
 // DocList lists all documents linked to a task.
 func DocList(ctx *Context, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("task ID is required.\nUsage: task-cli doc-list <task_id>")
+		return fmt.Errorf("task ID is required.\nUsage: task-cli task doc list <task_id>")
 	}
 
 	taskID, err := strconv.ParseInt(args[0], 10, 64)
@@ -129,7 +129,7 @@ func DocList(ctx *Context, args []string) error {
 // DocDelete removes a document link from a task.
 func DocDelete(ctx *Context, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("document ID is required.\nUsage: task-cli doc-del <id>")
+		return fmt.Errorf("document ID is required.\nUsage: task-cli task doc remove <id>")
 	}
 
 	docID, err := strconv.ParseInt(args[0], 10, 64)

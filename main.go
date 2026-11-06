@@ -1,12 +1,10 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
 	"task-cli/internal/cmd"
-	"task-cli/internal/db"
 )
 
 var (
@@ -20,61 +18,46 @@ func printVersion() {
 }
 
 func printUsage() {
-	fmt.Println("Usage: task-cli [--db <path>] <command> [arguments]")
+	fmt.Println("Usage: task-cli [--db <path>] [-F <format>] <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
-	fmt.Println("  task [command]                        Manage tasks (subcommands: add, list, view, update, delete, status, prio)")
+	fmt.Println("  task [command]                        Manage tasks (subcommands: add, list, view, update, delete, status, prio, doc)")
 	fmt.Println("  project [command]                     Manage projects (subcommands: add, list, view)")
+	fmt.Println("  task doc [command]                    Manage task documents (subcommands: add, list, remove)")
 	fmt.Println("  doc-add, attach <id> <path> [name]    Link a document to a task")
 	fmt.Println("  doc-list, docs <id>                   List documents linked to a task")
 	fmt.Println("  doc-del, doc-remove <id>              Remove a linked document by ID")
 	fmt.Println("  export, exp [options]                 Export projects, tasks, and documents to JSON")
 	fmt.Println("  import, imp <file> [options]          Import projects, tasks, and documents from JSON")
 	fmt.Println("  version                               Display CLI version")
-	fmt.Println("\nOptions:")
+	fmt.Println("\nGlobal Options:")
 	fmt.Println("  --db <path>                           Custom SQLite database path (default: ~/.task-cli.db)")
+	fmt.Println("  -F, --format <format>                 Output format: tsv (default), table")
 	fmt.Println("  -v, --version                         Display CLI version")
 	fmt.Println("  -h, --help                            Display this help message")
 }
 
-func getStore(customPath string) (*db.Store, error) {
-	dbPath := customPath
-	if dbPath == "" {
-		var err error
-		dbPath, err = db.DefaultDBPath()
-		if err != nil {
-			return nil, fmt.Errorf("failed to determine database path: %w", err)
-		}
-	}
-	return db.NewStore(dbPath)
-}
-
 func main() {
-	var showVersion bool
-	var dbPathFlag string
+	rawArgs := os.Args[1:]
 
-	flag.BoolVar(&showVersion, "version", false, "Display CLI version")
-	flag.BoolVar(&showVersion, "v", false, "Display CLI version (shorthand)")
-	flag.StringVar(&dbPathFlag, "db", "", "Path to SQLite database file (optional)")
-
-	flag.Usage = printUsage
-	flag.Parse()
-
-	if showVersion {
-		printVersion()
-		os.Exit(0)
+	ctx, remainingArgs, cleanup, err := cmd.ResolveContext(rawArgs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if cleanup != nil {
+		defer cleanup()
 	}
 
-	args := flag.Args()
-	if len(args) == 0 {
+	if len(remainingArgs) == 0 {
 		printUsage()
 		os.Exit(0)
 	}
 
-	command := args[0]
-	cmdArgs := args[1:]
+	command := remainingArgs[0]
+	cmdArgs := remainingArgs[1:]
 
 	switch command {
-	case "version":
+	case "version", "-v", "--version":
 		printVersion()
 		return
 
@@ -87,16 +70,12 @@ func main() {
 		}
 		printUsage()
 		return
+
+	case "-h", "--help":
+		printUsage()
+		return
 	}
 
-	store, err := getStore(dbPathFlag)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Database error: %v\n", err)
-		os.Exit(1)
-	}
-	defer store.Close()
-
-	ctx := &cmd.Context{Store: store}
 	handled, cmdErr := cmd.Execute(ctx, command, cmdArgs)
 	if !handled {
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)

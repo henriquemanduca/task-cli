@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -408,6 +410,28 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 		t.Errorf("expected 'done', 'start', 'abort' subcommands under task")
 	}
 
+	docNode := taskNode.FindSubcommand("doc")
+	if docNode == nil {
+		t.Fatal("expected 'doc' subcommand under task")
+	}
+	if taskNode.FindSubcommand("docs") == nil || taskNode.FindSubcommand("d") == nil {
+		t.Errorf("expected 'docs' and 'd' aliases for 'doc' under task")
+	}
+	for _, sub := range []string{"add", "list", "remove"} {
+		if docNode.FindSubcommand(sub) == nil {
+			t.Errorf("expected subcommand %q under 'task doc'", sub)
+		}
+	}
+	if docNode.FindSubcommand("attach") == nil {
+		t.Errorf("expected 'attach' alias under 'task doc'")
+	}
+	if docNode.FindSubcommand("ls") == nil {
+		t.Errorf("expected 'ls' alias under 'task doc'")
+	}
+	if docNode.FindSubcommand("rm") == nil || docNode.FindSubcommand("del") == nil || docNode.FindSubcommand("delete") == nil {
+		t.Errorf("expected 'rm', 'del', 'delete' aliases under 'task doc'")
+	}
+
 	// Test Execute with unknown command
 	handled, err := Execute(nil, "nonexistent-command-xyz", []string{})
 	if handled {
@@ -561,5 +585,96 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	handled, _ = Execute(ctx, "projects", []string{})
 	if handled {
 		t.Fatal("expected handled=false for legacy flat 'projects', domain 'project' is required")
+	}
+}
+
+func TestRouter_TaskDocSubcommands(t *testing.T) {
+	ctx, cleanup := setupTestContext(t)
+	defer cleanup()
+
+	tempDir := t.TempDir()
+	docFile1 := tempDir + "/spec.pdf"
+	docFile2 := tempDir + "/notes.txt"
+	if err := os.WriteFile(docFile1, []byte("pdf dummy data"), 0644); err != nil {
+		t.Fatalf("failed to create temp doc file: %v", err)
+	}
+	if err := os.WriteFile(docFile2, []byte("notes dummy data"), 0644); err != nil {
+		t.Fatalf("failed to create temp doc file 2: %v", err)
+	}
+
+	// 1. Create a task to attach to
+	task, err := ctx.Store.Add("Test Doc Hierarchy", "Testing doc subcommands", nil, "medium")
+	if err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	// 2. task doc help when called without args
+	out, err := captureStdout(func() error {
+		return Root.Execute(ctx, []string{"task", "doc"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error running 'task doc': %v", err)
+	}
+	if !strings.Contains(out, "Manage task document attachments") || !strings.Contains(out, "add, attach") {
+		t.Fatalf("expected doc help output, got:\n%s", out)
+	}
+
+	// 3. task doc add via full path
+	taskIDStr := fmt.Sprintf("%d", task.ID)
+	err = Root.Execute(ctx, []string{"task", "doc", "add", taskIDStr, docFile1, "Architecture Doc"})
+	if err != nil {
+		t.Fatalf("unexpected error running 'task doc add': %v", err)
+	}
+
+	// 4. task doc add via aliases 't d attach'
+	err = Root.Execute(ctx, []string{"t", "d", "attach", taskIDStr, docFile2})
+	if err != nil {
+		t.Fatalf("unexpected error running 't d attach': %v", err)
+	}
+
+	// 5. task doc list via alias 'task doc ls'
+	out, err = captureStdout(func() error {
+		return Root.Execute(ctx, []string{"task", "doc", "ls", taskIDStr})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error running 'task doc ls': %v", err)
+	}
+	if !strings.Contains(out, "Architecture Doc") || !strings.Contains(out, "notes.txt") {
+		t.Fatalf("expected both documents listed, got:\n%s", out)
+	}
+
+	// 6. List documents via alias 't docs list'
+	out, err = captureStdout(func() error {
+		return Root.Execute(ctx, []string{"t", "docs", "list", taskIDStr})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error running 't docs list': %v", err)
+	}
+	if !strings.Contains(out, "Architecture Doc") {
+		t.Fatalf("expected document listed via 't docs list', got:\n%s", out)
+	}
+
+	docs, err := ctx.Store.ListDocuments(task.ID)
+	if err != nil || len(docs) != 2 {
+		t.Fatalf("expected 2 documents, got %d (err: %v)", len(docs), err)
+	}
+
+	// 7. Remove first document via 'task doc remove'
+	firstDocID := fmt.Sprintf("%d", docs[0].ID)
+	err = Root.Execute(ctx, []string{"task", "doc", "remove", firstDocID})
+	if err != nil {
+		t.Fatalf("unexpected error running 'task doc remove': %v", err)
+	}
+
+	// 8. Remove second document via alias 't doc rm'
+	secondDocID := fmt.Sprintf("%d", docs[1].ID)
+	err = Root.Execute(ctx, []string{"t", "doc", "rm", secondDocID})
+	if err != nil {
+		t.Fatalf("unexpected error running 't doc rm': %v", err)
+	}
+
+	remainingDocs, err := ctx.Store.ListDocuments(task.ID)
+	if err != nil || len(remainingDocs) != 0 {
+		t.Fatalf("expected 0 documents remaining, got %d (err: %v)", len(remainingDocs), err)
 	}
 }

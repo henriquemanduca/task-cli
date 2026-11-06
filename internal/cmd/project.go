@@ -43,6 +43,11 @@ func ProjectList(ctx *Context, args []string) error {
 	var showDesc bool
 	var noHeader bool
 	var format string
+	defaultFormat := FormatTSV
+	if ctx != nil && ctx.Format != "" {
+		defaultFormat = ctx.Format
+	}
+
 	pCmd.BoolVar(&showTime, "t", false, "Include creation date column")
 	pCmd.BoolVar(&showTime, "time", false, "Include creation date column")
 	pCmd.BoolVar(&showDesc, "d", false, "Include description column")
@@ -50,8 +55,8 @@ func ProjectList(ctx *Context, args []string) error {
 	pCmd.BoolVar(&showDesc, "description", false, "Include description column")
 	pCmd.BoolVar(&noHeader, "n", false, "Suppress header row")
 	pCmd.BoolVar(&noHeader, "no-header", false, "Suppress header row")
-	pCmd.StringVar(&format, "format", "tsv", "Output format (tsv, table)")
-	pCmd.StringVar(&format, "F", "tsv", "Output format (shorthand)")
+	pCmd.StringVar(&format, "format", defaultFormat, "Output format (tsv, table)")
+	pCmd.StringVar(&format, "F", defaultFormat, "Output format (shorthand)")
 	pCmd.Bool("p", false, "List projects (shorthand)")
 	pCmd.Bool("projects", false, "List projects")
 

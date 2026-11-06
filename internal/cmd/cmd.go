@@ -6,7 +6,9 @@ import (
 
 // Context armazena dependências compartilhadas entre os comandos.
 type Context struct {
-	Store *db.Store
+	Store  *db.Store
+	DBPath string
+	Format string
 }
 
 // CommandFunc defines the function signature for subcommands.

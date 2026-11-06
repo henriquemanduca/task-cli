@@ -130,6 +130,11 @@ func TaskList(ctx *Context, args []string) error {
 	var statusFlag string
 	var format string
 
+	defaultFormat := FormatTSV
+	if ctx != nil && ctx.Format != "" {
+		defaultFormat = ctx.Format
+	}
+
 	listCmd.BoolVar(&showTime, "t", false, "Include creation date column")
 	listCmd.BoolVar(&showTime, "time", false, "Include creation date column")
 	listCmd.BoolVar(&showAll, "a", false, "List all tasks (any status)")
@@ -138,8 +143,8 @@ func TaskList(ctx *Context, args []string) error {
 	listCmd.BoolVar(&showDone, "D", false, "List only completed (done) tasks (shorthand)")
 	listCmd.BoolVar(&noHeader, "n", false, "Suppress header row")
 	listCmd.BoolVar(&noHeader, "no-header", false, "Suppress header row")
-	listCmd.StringVar(&format, "format", "tsv", "Output format (tsv, table)")
-	listCmd.StringVar(&format, "F", "tsv", "Output format (shorthand)")
+	listCmd.StringVar(&format, "format", defaultFormat, "Output format (tsv, table)")
+	listCmd.StringVar(&format, "F", defaultFormat, "Output format (shorthand)")
 	listCmd.StringVar(&projectCode, "p", "", "Filter tasks by project code (shorthand)")
 	listCmd.StringVar(&projectCode, "project", "", "Filter tasks by project code")
 	listCmd.StringVar(&statusFlag, "s", "", "Filter tasks by status (shorthand)")

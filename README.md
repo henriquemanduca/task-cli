@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/seu-usuario/task-cli/main/install.s
 
 ## Usage
 
-By default, the SQLite database is located at `~/.task-cli.db` (configurable via `TASK_CLI_DB` env variable or `--db` flag).
+By default, the SQLite database is located at `~/.task-cli.db` (configurable via `TASK_CLI_DB` env variable or `--db` flag). Global flags such as `--db` and `-F/--format` are transversal and can appear anywhere before, between, or after subcommands.
 
 ```bash
 # Projects (aggregated under 'project')
@@ -90,10 +90,10 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 ./dist/task-cli task delete 1                     # Soft delete (alias: del, rm, remove)
 
 # Document attachments
-./dist/task-cli attach 1 /path/to/spec.pdf                     # alias: doc-add
-./dist/task-cli attach 1 ./notes.txt "Meeting Notes"
-./dist/task-cli docs 1                                        # alias: doc-list
-./dist/task-cli doc-del 1                                     # alias: doc-remove
+./dist/task-cli task doc add 1 /path/to/spec.pdf            # alias: attach, doc-add
+./dist/task-cli task doc add 1 ./notes.txt "Meeting Notes"
+./dist/task-cli task doc list 1                             # alias: docs, doc-list, ls
+./dist/task-cli task doc remove 1                           # alias: doc-del, doc-remove, del, rm
 
 # Export & Import (JSON)
 ./dist/task-cli export                                        # alias: exp (exports all to stdout)
