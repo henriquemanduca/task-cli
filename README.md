@@ -14,6 +14,7 @@ A CLI task management tool written in Go with embedded **SQLite** storage (pure 
 - `make checksums`: Generates SHA-256 hashes (`dist/checksums.txt`).
 - `make install`: Installs binary to `~/.local/bin` (or `PREFIX/bin`).
 - `make uninstall`: Removes binary from installation directory.
+- `make install-skill`: Installs/updates `SKILL.md` as a global agent skill in `~/.agents/skills/task-cli/` (or `SKILLDIR`).
 - `make test`: Runs unit tests.
 - `make run`: Runs the application locally via `go run .`.
 - `make clean`: Removes the `dist/` directory.
@@ -46,29 +47,34 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 ```bash
 # Projects
 ./dist/task-cli np BACKLOG "Product Backlog" "Main project backlog"   # alias: project-add
-./dist/task-cli lp                                                     # alias: projects
-./dist/task-cli lp -d  # Shows descriptions
-./dist/task-cli lp -t  # Shows creation dates
+./dist/task-cli lp                                                     # alias: projects  (TSV output, with header)
+./dist/task-cli lp -n       # Suppress header row
+./dist/task-cli lp -d       # Include description column
+./dist/task-cli lp -t       # Include creation date column
+./dist/task-cli lp -d -t    # Description + date
 
 # Tasks
 ./dist/task-cli add "Standalone Task" "Not linked to any project"
-./dist/task-cli add -f BACKLOG "Project Task" "Linked to BACKLOG project"
-./dist/task-cli add -f BACKLOG --priority high "Urgent Task"
-# List tasks (by default shows pending tasks with full title; use -a for all, --done for completed)
-./dist/task-cli list           # Pending tasks
-./dist/task-cli list -a        # All tasks (any status)
-./dist/task-cli list --done    # Only completed tasks
-./dist/task-cli list -d        # Include description
-./dist/task-cli list -t        # Include creation dates
-./dist/task-cli list -a -d -t  # All tasks with full details
+./dist/task-cli add -p BACKLOG "Project Task" "Linked to BACKLOG project"
+./dist/task-cli add -p BACKLOG --priority high "Urgent Task"
+# List tasks — TSV output; by default shows pending tasks; use -a for all, --done for completed
+./dist/task-cli list              # Pending tasks (with header)
+./dist/task-cli list -n           # Pending tasks, no header
+./dist/task-cli list -a           # All tasks (any status)
+./dist/task-cli list --done       # Only completed tasks
+./dist/task-cli list -d           # Include description column
+./dist/task-cli list -t           # Include creation date column
+./dist/task-cli list -a -d -t     # All tasks with full details
 ./dist/task-cli list in-progress
-./dist/task-cli list -f BACKLOG
-./dist/task-cli list -a -f BACKLOG
+./dist/task-cli list -p BACKLOG
+./dist/task-cli list -a -p BACKLOG
 
 # View full task details (including multiline description paragraphs; add -t to show timestamps)
 ./dist/task-cli view 1
 ./dist/task-cli view 1 -t
 ./dist/task-cli update 1 "Study Go static linking"
+./dist/task-cli update 1 -p BACKLOG          # Move to project
+./dist/task-cli update 1 -p none             # Detach from project
 ./dist/task-cli edit 1 # Opens $EDITOR (defaults to nano) to edit description
 ./dist/task-cli set-prio 1 high
 ./dist/task-cli set-pending 1
@@ -86,7 +92,7 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 # Export & Import (JSON)
 ./dist/task-cli export                                        # alias: exp (exports all to stdout)
 ./dist/task-cli export --pretty --out backup.json             # Formatted export to file
-./dist/task-cli export -f BACKLOG --out backlog.json          # Export specific project
+./dist/task-cli export -p BACKLOG --out backlog.json          # Export specific project
 ./dist/task-cli export --status pending                       # Export tasks with status filter
 ./dist/task-cli export --include-deleted                      # Include soft-deleted tasks
 ./dist/task-cli export --dry-run                              # Simulate export without writing
@@ -100,4 +106,29 @@ cat backup.json | ./dist/task-cli imp -                       # Import via stdin
 # Version and help
 ./dist/task-cli --version
 ./dist/task-cli --help
+```
+
+## TSV Output
+
+`lp` and `list` emit tab-separated values, one record per line, with a header row by default.
+
+```
+# list output columns:
+id  project  status  priority  title  [description]  [created_at]
+
+# lp output columns:
+id  code  name  [description]  [created_at]
+```
+
+Suppress the header with `-n` / `--no-header` for clean piping:
+
+```bash
+# count tasks by priority
+task-cli list -a -n | cut -f4 | sort | uniq -c
+
+# filter in-progress tasks in a project
+task-cli list -a -n -p BACKLOG | awk -F'\t' '$3=="in-progress"'
+
+# human-readable table (requires column utility)
+task-cli list -a | column -t -s $'\t'
 ```

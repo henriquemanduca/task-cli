@@ -7,8 +7,9 @@ BUILD    := CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)"
 
 PREFIX   ?= $(HOME)/.local
 BINDIR   ?= $(PREFIX)/bin
+SKILLDIR ?= $(HOME)/.agents/skills/$(APP)
 
-.PHONY: build build-all clean test checksums run install uninstall
+.PHONY: build build-all clean test checksums run install uninstall install-skill
 
 build:
 	$(BUILD) -o dist/$(APP) .
@@ -31,6 +32,11 @@ install: build
 uninstall:
 	rm -f $(BINDIR)/$(APP)
 	@echo "Removido $(BINDIR)/$(APP)"
+
+install-skill:
+	@mkdir -p $(SKILLDIR)
+	install -m 644 SKILL.md $(SKILLDIR)/SKILL.md
+	@echo "Skill instalada/atualizada em $(SKILLDIR)/SKILL.md"
 
 test:
 	go test ./...

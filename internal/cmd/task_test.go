@@ -21,22 +21,22 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatalf("unexpected error creating project: %v", err)
 	}
 
-	// TaskAdd should reject -p flag
-	err = TaskAdd(ctx, []string{"-p", "PROJ2", "Another Project"})
+	// TaskAdd should reject -f flag
+	err = TaskAdd(ctx, []string{"-f", "PROJ2", "Another Project"})
 	if err == nil {
-		t.Fatal("expected error when passing -p to TaskAdd, got nil")
+		t.Fatal("expected error when passing -f to TaskAdd, got nil")
 	}
 
-	// Add task linked to project via "add -f" (flag first)
-	err = TaskAdd(ctx, []string{"-f", "PROJ", "Buy groceries", "Milk, eggs, bread"})
+	// Add task linked to project via "add -p" (flag first)
+	err = TaskAdd(ctx, []string{"-p", "PROJ", "Buy groceries", "Milk, eggs, bread"})
 	if err != nil {
-		t.Fatalf("unexpected error adding task with -f: %v", err)
+		t.Fatalf("unexpected error adding task with -p: %v", err)
 	}
 
-	// Add task linked to project with -f at the END (user report case: "add Title Description -f PROJ")
-	err = TaskAdd(ctx, []string{"Teste", "Descricao Teste", "-f", "PROJ"})
+	// Add task linked to project with -p at the END (user report case: "add Title Description -p PROJ")
+	err = TaskAdd(ctx, []string{"Teste", "Descricao Teste", "-p", "PROJ"})
 	if err != nil {
-		t.Fatalf("unexpected error adding task with -f at end: %v", err)
+		t.Fatalf("unexpected error adding task with -p at end: %v", err)
 	}
 	tAdded, err := ctx.Store.GetTaskByID(2)
 	if err != nil {
@@ -53,10 +53,10 @@ func TestTaskCommands(t *testing.T) {
 	}
 
 	// 2. TaskList
-	// TaskList should reject -p flag
-	err = TaskList(ctx, []string{"-p"})
+	// TaskList should reject -f flag
+	err = TaskList(ctx, []string{"-f", "X"})
 	if err == nil {
-		t.Fatal("expected error when passing -p to TaskList, got nil")
+		t.Fatal("expected error when passing -f to TaskList, got nil")
 	}
 
 	// List tasks (all) with and without -t and -d
@@ -77,14 +77,14 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatalf("unexpected error listing tasks with -d -t: %v", err)
 	}
 
-	// List tasks filtered by project via "list -f"
-	err = TaskList(ctx, []string{"-f", "PROJ"})
+	// List tasks filtered by project via "list -p"
+	err = TaskList(ctx, []string{"-p", "PROJ"})
 	if err != nil {
-		t.Fatalf("unexpected error listing tasks filtered by project -f: %v", err)
+		t.Fatalf("unexpected error listing tasks filtered by project -p: %v", err)
 	}
 
-	// List tasks filtered by status and project: "list pending -f PROJ"
-	err = TaskList(ctx, []string{"pending", "-f", "PROJ"})
+	// List tasks filtered by status and project: "list pending -p PROJ"
+	err = TaskList(ctx, []string{"pending", "-p", "PROJ"})
 	if err != nil {
 		t.Fatalf("unexpected error listing tasks filtered by status and project: %v", err)
 	}

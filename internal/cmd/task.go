@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"task-cli/internal/db"
 )
@@ -20,15 +19,6 @@ func cleanOneLine(text string) string {
 	clean = strings.Join(strings.Fields(clean), " ")
 	if clean == "" {
 		return "-"
-	}
-	return clean
-}
-
-func summarizeText(text string, maxLen int) string {
-	clean := cleanOneLine(text)
-	runes := []rune(clean)
-	if len(runes) > maxLen {
-		return string(runes[:maxLen-3]) + "..."
 	}
 	return clean
 }
@@ -75,15 +65,15 @@ func TaskAdd(ctx *Context, args []string) error {
 	var projectCode string
 	var priority string
 
-	addCmd.StringVar(&projectCode, "f", "", "Project code to link task to (shorthand)")
-	addCmd.StringVar(&projectCode, "filter", "", "Project code to link task to")
+	addCmd.StringVar(&projectCode, "p", "", "Project code to link task to (shorthand)")
 	addCmd.StringVar(&projectCode, "proj", "", "Project code to link task to")
+	addCmd.StringVar(&projectCode, "project", "", "Project code to link task to")
 	addCmd.StringVar(&priority, "priority", "medium", "Task priority (e.g. low, medium, high)")
 
 	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
-		"-f":         true,
-		"--filter":   true,
+		"-p":         true,
 		"--proj":     true,
+		"--project":  true,
 		"--priority": true,
 	})
 
@@ -92,7 +82,7 @@ func TaskAdd(ctx *Context, args []string) error {
 	}
 
 	if len(posArgs) < 1 {
-		return fmt.Errorf("'title' is required.\nUsage: task-cli add [-f <code>] [--priority <prio>] <title> [description]")
+		return fmt.Errorf("'title' is required.\nUsage: task-cli add [-p <code>] [--priority <prio>] <title> [description]")
 	}
 
 	title := strings.TrimSpace(posArgs[0])
@@ -128,7 +118,7 @@ func TaskAdd(ctx *Context, args []string) error {
 	return nil
 }
 
-// TaskList lista tarefas filtrando por status e/ou projeto.
+// TaskList lista tarefas filtrando por status e/ou projeto em formato TSV.
 // Por padrão, lista apenas tarefas com status 'pending'.
 func TaskList(ctx *Context, args []string) error {
 	listCmd := flag.NewFlagSet("list", flag.ContinueOnError)
@@ -136,27 +126,28 @@ func TaskList(ctx *Context, args []string) error {
 	var showDesc bool
 	var showAll bool
 	var showDone bool
+	var noHeader bool
 	var projectCode string
 	var statusFlag string
 
-	listCmd.BoolVar(&showTime, "t", false, "Show creation dates")
-	listCmd.BoolVar(&showTime, "time", false, "Show creation dates")
-	listCmd.BoolVar(&showDesc, "d", false, "Show task descriptions")
-	listCmd.BoolVar(&showDesc, "desc", false, "Show task descriptions")
-	listCmd.BoolVar(&showDesc, "description", false, "Show task descriptions")
+	listCmd.BoolVar(&showTime, "t", false, "Include creation date column")
+	listCmd.BoolVar(&showTime, "time", false, "Include creation date column")
+	listCmd.BoolVar(&showDesc, "d", false, "Include description column")
+	listCmd.BoolVar(&showDesc, "desc", false, "Include description column")
+	listCmd.BoolVar(&showDesc, "description", false, "Include description column")
 	listCmd.BoolVar(&showAll, "a", false, "List all tasks (any status)")
 	listCmd.BoolVar(&showAll, "all", false, "List all tasks (any status)")
 	listCmd.BoolVar(&showDone, "done", false, "List only completed (done) tasks")
 	listCmd.BoolVar(&showDone, "D", false, "List only completed (done) tasks (shorthand)")
-	listCmd.StringVar(&projectCode, "f", "", "Filter tasks by project code (shorthand)")
-	listCmd.StringVar(&projectCode, "filter", "", "Filter tasks by project code")
+	listCmd.BoolVar(&noHeader, "n", false, "Suppress TSV header row")
+	listCmd.BoolVar(&noHeader, "no-header", false, "Suppress TSV header row")
+	listCmd.StringVar(&projectCode, "p", "", "Filter tasks by project code (shorthand)")
 	listCmd.StringVar(&projectCode, "project", "", "Filter tasks by project code")
 	listCmd.StringVar(&statusFlag, "s", "", "Filter tasks by status (shorthand)")
 	listCmd.StringVar(&statusFlag, "status", "", "Filter tasks by status")
 
 	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
-		"-f":        true,
-		"--filter":  true,
+		"-p":        true,
 		"--project": true,
 		"-s":        true,
 		"--status":  true,
@@ -194,37 +185,32 @@ func TaskList(ctx *Context, args []string) error {
 	}
 
 	if len(tasks) == 0 {
-		fmt.Println("No tasks found.")
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	headers := []string{"ID", "PROJECT", "STATUS", "PRIO", "TITLE"}
-	dividers := []string{"----", "-------", "------", "----", "-----"}
-	if showDesc {
-		headers = append(headers, "DESCRIPTION")
-		dividers = append(dividers, "-----------")
+	if !noHeader {
+		cols := []string{"id", "project", "status", "priority", "title"}
+		if showDesc {
+			cols = append(cols, "description")
+		}
+		if showTime {
+			cols = append(cols, "created_at")
+		}
+		fmt.Println(strings.Join(cols, "\t"))
 	}
-	if showTime {
-		headers = append(headers, "CREATED AT")
-		dividers = append(dividers, "----------")
-	}
-	fmt.Fprintln(w, strings.Join(headers, "\t"))
-	fmt.Fprintln(w, strings.Join(dividers, "\t"))
 
 	for _, t := range tasks {
 		proj := t.ProjectCode
 		if proj == "" {
 			proj = "-"
 		}
-		titleClean := cleanOneLine(t.Title)
 
 		row := []string{
-			fmt.Sprintf("%04d", t.ID),
+			fmt.Sprintf("%d", t.ID),
 			proj,
 			string(t.Status),
 			t.Priority,
-			titleClean,
+			cleanOneLine(t.Title),
 		}
 
 		if showDesc {
@@ -232,16 +218,16 @@ func TaskList(ctx *Context, args []string) error {
 			if t.AbortReason != nil && *t.AbortReason != "" {
 				desc = fmt.Sprintf("%s (reason: %s)", desc, *t.AbortReason)
 			}
-			row = append(row, summarizeText(desc, 50))
+			row = append(row, cleanOneLine(desc))
 		}
 
 		if showTime {
-			row = append(row, t.CreatedAt.Local().Format("2006-01-02 15:04"))
+			row = append(row, t.CreatedAt.Local().Format("2006-01-02T15:04:05"))
 		}
 
-		fmt.Fprintln(w, strings.Join(row, "\t"))
+		fmt.Println(strings.Join(row, "\t"))
 	}
-	return w.Flush()
+	return nil
 }
 
 // TaskView exibe os detalhes completos de uma tarefa.
@@ -277,11 +263,10 @@ func TaskView(ctx *Context, args []string) error {
 		proj = "-"
 	}
 
-	fmt.Printf("Task #%04d: %s\n", t.ID, t.Title)
-	fmt.Printf("--------------------------------------------------\n")
-	fmt.Printf("Project:    %s\n", proj)
-	fmt.Printf("Status:     %s\n", t.Status)
-	fmt.Printf("Priority:   %s\n", t.Priority)
+	fmt.Printf("Task: %04d - %s\n", t.ID, t.Title)
+	fmt.Printf("Project: %s\n", proj)
+	fmt.Printf("Status: %s\n", t.Status)
+	fmt.Printf("Priority: %s\n", t.Priority)
 	if showTime {
 		fmt.Printf("Created At: %s\n", t.CreatedAt.Local().Format("2006-01-02 15:04:05"))
 		fmt.Printf("Updated At: %s\n", t.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
@@ -289,7 +274,7 @@ func TaskView(ctx *Context, args []string) error {
 	if t.AbortReason != nil && *t.AbortReason != "" {
 		fmt.Printf("Abort Note: %s\n", *t.AbortReason)
 	}
-	fmt.Printf("\nDescription:\n")
+	fmt.Printf("Description:\n")
 	if strings.TrimSpace(t.Description) == "" {
 		fmt.Println("(No description provided)")
 	} else {
@@ -316,15 +301,11 @@ func TaskUpdate(ctx *Context, args []string) error {
 	updateCmd := flag.NewFlagSet("update", flag.ContinueOnError)
 	var projectCode string
 	var priority string
-	updateCmd.StringVar(&projectCode, "f", "", "Move task to project code (or 'none' to detach)")
-	updateCmd.StringVar(&projectCode, "filter", "", "Move task to project code (or 'none' to detach)")
 	updateCmd.StringVar(&projectCode, "p", "", "Move task to project code (or 'none' to detach)")
 	updateCmd.StringVar(&projectCode, "project", "", "Move task to project code (or 'none' to detach)")
 	updateCmd.StringVar(&priority, "priority", "", "Update task priority (e.g. low, medium, high)")
 
 	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
-		"-f":         true,
-		"--filter":   true,
 		"-p":         true,
 		"--project":  true,
 		"--priority": true,
@@ -335,7 +316,7 @@ func TaskUpdate(ctx *Context, args []string) error {
 	}
 
 	if len(posArgs) < 1 {
-		return fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-f <code>] [--priority <prio>] [title] [description]")
+		return fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-p <code>] [--priority <prio>] [title] [description]")
 	}
 
 	idStr := posArgs[0]
