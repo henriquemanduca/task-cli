@@ -123,7 +123,6 @@ func TaskAdd(ctx *Context, args []string) error {
 func TaskList(ctx *Context, args []string) error {
 	listCmd := flag.NewFlagSet("list", flag.ContinueOnError)
 	var showTime bool
-	var showDesc bool
 	var showAll bool
 	var showDone bool
 	var noHeader bool
@@ -133,9 +132,6 @@ func TaskList(ctx *Context, args []string) error {
 
 	listCmd.BoolVar(&showTime, "t", false, "Include creation date column")
 	listCmd.BoolVar(&showTime, "time", false, "Include creation date column")
-	listCmd.BoolVar(&showDesc, "d", false, "Include description column")
-	listCmd.BoolVar(&showDesc, "desc", false, "Include description column")
-	listCmd.BoolVar(&showDesc, "description", false, "Include description column")
 	listCmd.BoolVar(&showAll, "a", false, "List all tasks (any status)")
 	listCmd.BoolVar(&showAll, "all", false, "List all tasks (any status)")
 	listCmd.BoolVar(&showDone, "done", false, "List only completed (done) tasks")
@@ -198,9 +194,6 @@ func TaskList(ctx *Context, args []string) error {
 	}
 
 	cols := []string{"id", "project", "status", "priority", "title"}
-	if showDesc {
-		cols = append(cols, "description")
-	}
 	if showTime {
 		cols = append(cols, "created_at")
 	}
@@ -218,14 +211,6 @@ func TaskList(ctx *Context, args []string) error {
 			string(t.Status),
 			t.Priority,
 			cleanOneLine(t.Title),
-		}
-
-		if showDesc {
-			desc := t.Description
-			if t.AbortReason != nil && *t.AbortReason != "" {
-				desc = fmt.Sprintf("%s (reason: %s)", desc, *t.AbortReason)
-			}
-			row = append(row, cleanOneLine(desc))
 		}
 
 		if showTime {

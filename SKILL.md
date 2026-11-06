@@ -49,9 +49,10 @@ task-cli list -a           # all tasks, any status
 task-cli list --done       # only completed
 task-cli list in-progress  # filter by status (positional)
 task-cli list -p BACKLOG   # filter by project
-task-cli list -n -d -t     # no header, with description + date columns
+task-cli list -n -t         # no header, with date column
 
-task-cli view 1            # full details, multiline description
+task-cli view 1            # full details, multiline description (alias: show)
+task-cli show 1            # view task description and details
 task-cli view 1 -t         # also show timestamps
 task-cli update 1 "New title"
 task-cli update 1 -p BACKLOG   # move to project

@@ -30,7 +30,7 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 - Project filters: `add`/`list`/`update` use `-p/--project`; `export` accepts `-f/--filter/--project/--proj` but not `-p` (README's `export -p ...` example is wrong).
 - Statuses are `pending`, `in-progress`, `done`, `abort`; priorities are `low`, `medium`, `high`, `urgent`. `list` defaults to pending; `-a/--all/all` shows everything.
 - `delete` is a soft delete (`deleted_at`); normal queries and exports exclude deleted tasks unless export gets `--include-deleted`.
-- TSV list commands print no header at all when there are zero rows. Task TSV rows use `cleanOneLine` for title/description; keep newline/tab stripping when adding fields, and update the header when adding a column.
+- TSV list commands print no header at all when there are zero rows. Task TSV rows use `cleanOneLine` for title (description is viewed via `view`/`show`); keep newline/tab stripping when adding fields, and update the header when adding a column.
 
 ## Storage and import/export
 

@@ -65,15 +65,15 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 ./dist/task-cli list -a               # All tasks (any status)
 ./dist/task-cli list -a -F table      # All tasks formatted as table
 ./dist/task-cli list --done           # Only completed tasks
-./dist/task-cli list -d               # Include description column
 ./dist/task-cli list -t               # Include creation date column
-./dist/task-cli list -a -d -t         # All tasks with full details
+./dist/task-cli list -a -t            # All tasks with creation date
 ./dist/task-cli list in-progress
 ./dist/task-cli list -p BACKLOG
 ./dist/task-cli list -a -p BACKLOG
 
-# View full task details (including multiline description paragraphs; add -t to show timestamps)
+# View full task details including description (alias: show; add -t to show timestamps)
 ./dist/task-cli view 1
+./dist/task-cli show 1
 ./dist/task-cli view 1 -t
 ./dist/task-cli update 1 "Study Go static linking"
 ./dist/task-cli update 1 -p BACKLOG          # Move to project
@@ -116,8 +116,8 @@ cat backup.json | ./dist/task-cli imp -                       # Import via stdin
 `lp` and `list` emit tab-separated values (TSV) by default with a header row, designed for unix pipes and scripts.
 
 ```
-# list output columns:
-id  project  status  priority  title  [description]  [created_at]
+# list output columns (task descriptions are viewed via 'view' or 'show'):
+id  project  status  priority  title  [created_at]
 
 # lp output columns:
 id  code  name  [description]  [created_at]
@@ -130,8 +130,8 @@ Use `-F table` (or `--format table`) for an aligned, human-readable view:
 task-cli list -F table
 task-cli lp -F table
 
-# with details
-task-cli list -a -d -F table
+# with date timestamps
+task-cli list -a -t -F table
 ```
 
 Suppress the header with `-n` / `--no-header` for clean piping:

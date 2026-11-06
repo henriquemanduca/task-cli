@@ -68,13 +68,10 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error listing tasks with -t: %v", err)
 	}
+	// TaskList should reject -d flag (descriptions are only viewable via view/show)
 	err = TaskList(ctx, []string{"-d"})
-	if err != nil {
-		t.Fatalf("unexpected error listing tasks with -d: %v", err)
-	}
-	err = TaskList(ctx, []string{"-d", "-t"})
-	if err != nil {
-		t.Fatalf("unexpected error listing tasks with -d -t: %v", err)
+	if err == nil {
+		t.Fatal("expected error when passing -d to TaskList, got nil")
 	}
 
 	// List tasks filtered by project via "list -p"
@@ -114,10 +111,19 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatal("expected error for invalid status, got nil")
 	}
 
-	// 3. TaskView (with and without -t)
+	// 3. TaskView and show alias (with and without -t)
 	err = TaskView(ctx, []string{"1"})
 	if err != nil {
 		t.Fatalf("unexpected error viewing task: %v", err)
+	}
+
+	showHandler, ok := Registry["show"]
+	if !ok {
+		t.Fatal("expected 'show' command to be registered in Registry")
+	}
+	err = showHandler(ctx, []string{"1"})
+	if err != nil {
+		t.Fatalf("unexpected error viewing task with show: %v", err)
 	}
 
 	err = TaskView(ctx, []string{"1", "-t"})
