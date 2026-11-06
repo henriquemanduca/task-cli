@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 
 	"task-cli/internal/db"
@@ -34,24 +35,34 @@ func ProjectAdd(ctx *Context, args []string) error {
 	return nil
 }
 
-// ProjectList lista todos os projetos cadastrados em formato TSV.
+// ProjectList lista todos os projetos cadastrados em formato TSV ou tabela.
 func ProjectList(ctx *Context, args []string) error {
 	pCmd := flag.NewFlagSet("project-list", flag.ContinueOnError)
 	var showTime bool
 	var showDesc bool
 	var noHeader bool
+	var format string
 	pCmd.BoolVar(&showTime, "t", false, "Include creation date column")
 	pCmd.BoolVar(&showTime, "time", false, "Include creation date column")
 	pCmd.BoolVar(&showDesc, "d", false, "Include description column")
 	pCmd.BoolVar(&showDesc, "desc", false, "Include description column")
 	pCmd.BoolVar(&showDesc, "description", false, "Include description column")
-	pCmd.BoolVar(&noHeader, "n", false, "Suppress TSV header row")
-	pCmd.BoolVar(&noHeader, "no-header", false, "Suppress TSV header row")
+	pCmd.BoolVar(&noHeader, "n", false, "Suppress header row")
+	pCmd.BoolVar(&noHeader, "no-header", false, "Suppress header row")
+	pCmd.StringVar(&format, "format", "tsv", "Output format (tsv, table)")
+	pCmd.StringVar(&format, "F", "tsv", "Output format (shorthand)")
 	pCmd.Bool("p", false, "List projects (shorthand)")
 	pCmd.Bool("projects", false, "List projects")
 
-	flagArgs, _ := splitFlagsAndPosArgs(args, nil)
+	flagArgs, _ := splitFlagsAndPosArgs(args, map[string]bool{
+		"-F":       true,
+		"--format": true,
+	})
 	if err := pCmd.Parse(flagArgs); err != nil {
+		return err
+	}
+
+	if _, err := validateFormat(format); err != nil {
 		return err
 	}
 
@@ -64,17 +75,15 @@ func ProjectList(ctx *Context, args []string) error {
 		return nil
 	}
 
-	if !noHeader {
-		cols := []string{"id", "code", "name"}
-		if showDesc {
-			cols = append(cols, "description")
-		}
-		if showTime {
-			cols = append(cols, "created_at")
-		}
-		fmt.Println(strings.Join(cols, "\t"))
+	cols := []string{"id", "code", "name"}
+	if showDesc {
+		cols = append(cols, "description")
+	}
+	if showTime {
+		cols = append(cols, "created_at")
 	}
 
+	var rows [][]string
 	for _, p := range projects {
 		desc := p.Description
 		if desc == "" {
@@ -86,13 +95,14 @@ func ProjectList(ctx *Context, args []string) error {
 			p.Name,
 		}
 		if showDesc {
-			row = append(row, desc)
+			row = append(row, cleanOneLine(desc))
 		}
 		if showTime {
 			row = append(row, p.CreatedAt.Local().Format("2006-01-02T15:04:05"))
 		}
-		fmt.Println(strings.Join(row, "\t"))
+		rows = append(rows, row)
 	}
-	return nil
+
+	return printOutput(os.Stdout, format, noHeader, cols, rows)
 }
 

@@ -48,23 +48,26 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 # Projects
 ./dist/task-cli np BACKLOG "Product Backlog" "Main project backlog"   # alias: project-add
 ./dist/task-cli lp                                                     # alias: projects  (TSV output, with header)
-./dist/task-cli lp -n       # Suppress header row
-./dist/task-cli lp -d       # Include description column
-./dist/task-cli lp -t       # Include creation date column
-./dist/task-cli lp -d -t    # Description + date
+./dist/task-cli lp -n           # Suppress header row
+./dist/task-cli lp -d           # Include description column
+./dist/task-cli lp -t           # Include creation date column
+./dist/task-cli lp -d -t        # Description + date
+./dist/task-cli lp -F table     # Formatted table view (alias: --format table)
 
 # Tasks
 ./dist/task-cli add "Standalone Task" "Not linked to any project"
 ./dist/task-cli add -p BACKLOG "Project Task" "Linked to BACKLOG project"
 ./dist/task-cli add -p BACKLOG --priority high "Urgent Task"
-# List tasks — TSV output; by default shows pending tasks; use -a for all, --done for completed
-./dist/task-cli list              # Pending tasks (with header)
-./dist/task-cli list -n           # Pending tasks, no header
-./dist/task-cli list -a           # All tasks (any status)
-./dist/task-cli list --done       # Only completed tasks
-./dist/task-cli list -d           # Include description column
-./dist/task-cli list -t           # Include creation date column
-./dist/task-cli list -a -d -t     # All tasks with full details
+# List tasks — TSV output by default; use -F table for human-readable formatted table
+./dist/task-cli list                  # Pending tasks (TSV with header)
+./dist/task-cli list -F table         # Pending tasks as formatted table
+./dist/task-cli list -n               # Pending tasks, no header
+./dist/task-cli list -a               # All tasks (any status)
+./dist/task-cli list -a -F table      # All tasks formatted as table
+./dist/task-cli list --done           # Only completed tasks
+./dist/task-cli list -d               # Include description column
+./dist/task-cli list -t               # Include creation date column
+./dist/task-cli list -a -d -t         # All tasks with full details
 ./dist/task-cli list in-progress
 ./dist/task-cli list -p BACKLOG
 ./dist/task-cli list -a -p BACKLOG
@@ -108,9 +111,9 @@ cat backup.json | ./dist/task-cli imp -                       # Import via stdin
 ./dist/task-cli --help
 ```
 
-## TSV Output
+## Output Formats (TSV & Table)
 
-`lp` and `list` emit tab-separated values, one record per line, with a header row by default.
+`lp` and `list` emit tab-separated values (TSV) by default with a header row, designed for unix pipes and scripts.
 
 ```
 # list output columns:
@@ -118,6 +121,17 @@ id  project  status  priority  title  [description]  [created_at]
 
 # lp output columns:
 id  code  name  [description]  [created_at]
+```
+
+Use `-F table` (or `--format table`) for an aligned, human-readable view:
+
+```bash
+# human-readable aligned table view
+task-cli list -F table
+task-cli lp -F table
+
+# with details
+task-cli list -a -d -F table
 ```
 
 Suppress the header with `-n` / `--no-header` for clean piping:
@@ -128,7 +142,4 @@ task-cli list -a -n | cut -f4 | sort | uniq -c
 
 # filter in-progress tasks in a project
 task-cli list -a -n -p BACKLOG | awk -F'\t' '$3=="in-progress"'
-
-# human-readable table (requires column utility)
-task-cli list -a | column -t -s $'\t'
 ```

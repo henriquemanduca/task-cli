@@ -27,7 +27,8 @@ binary, or `./dist/task-cli` from a source checkout (`make build`).
 
 ```bash
 task-cli np BACKLOG "Product Backlog" "Main project backlog"   # add (alias: project-add)
-task-cli lp                                                     # list (alias: projects), TSV
+task-cli lp                                                     # list (alias: projects), TSV default
+task-cli lp -F table  # formatted table view (shorthand -F, --format table)
 task-cli lp -n        # no header row
 task-cli lp -d -t     # include description and creation date columns
 ```
@@ -43,6 +44,7 @@ task-cli add -p BACKLOG "Project Task" "Linked to BACKLOG"
 task-cli add -p BACKLOG --priority high "Urgent Task"
 
 task-cli list              # pending tasks (default), TSV with header
+task-cli list -F table     # formatted table view (shorthand -F, --format table)
 task-cli list -a           # all tasks, any status
 task-cli list --done       # only completed
 task-cli list in-progress  # filter by status (positional)

@@ -129,6 +129,7 @@ func TaskList(ctx *Context, args []string) error {
 	var noHeader bool
 	var projectCode string
 	var statusFlag string
+	var format string
 
 	listCmd.BoolVar(&showTime, "t", false, "Include creation date column")
 	listCmd.BoolVar(&showTime, "time", false, "Include creation date column")
@@ -139,8 +140,10 @@ func TaskList(ctx *Context, args []string) error {
 	listCmd.BoolVar(&showAll, "all", false, "List all tasks (any status)")
 	listCmd.BoolVar(&showDone, "done", false, "List only completed (done) tasks")
 	listCmd.BoolVar(&showDone, "D", false, "List only completed (done) tasks (shorthand)")
-	listCmd.BoolVar(&noHeader, "n", false, "Suppress TSV header row")
-	listCmd.BoolVar(&noHeader, "no-header", false, "Suppress TSV header row")
+	listCmd.BoolVar(&noHeader, "n", false, "Suppress header row")
+	listCmd.BoolVar(&noHeader, "no-header", false, "Suppress header row")
+	listCmd.StringVar(&format, "format", "tsv", "Output format (tsv, table)")
+	listCmd.StringVar(&format, "F", "tsv", "Output format (shorthand)")
 	listCmd.StringVar(&projectCode, "p", "", "Filter tasks by project code (shorthand)")
 	listCmd.StringVar(&projectCode, "project", "", "Filter tasks by project code")
 	listCmd.StringVar(&statusFlag, "s", "", "Filter tasks by status (shorthand)")
@@ -151,9 +154,15 @@ func TaskList(ctx *Context, args []string) error {
 		"--project": true,
 		"-s":        true,
 		"--status":  true,
+		"-F":        true,
+		"--format":  true,
 	})
 
 	if err := listCmd.Parse(flagArgs); err != nil {
+		return err
+	}
+
+	if _, err := validateFormat(format); err != nil {
 		return err
 	}
 
@@ -188,17 +197,15 @@ func TaskList(ctx *Context, args []string) error {
 		return nil
 	}
 
-	if !noHeader {
-		cols := []string{"id", "project", "status", "priority", "title"}
-		if showDesc {
-			cols = append(cols, "description")
-		}
-		if showTime {
-			cols = append(cols, "created_at")
-		}
-		fmt.Println(strings.Join(cols, "\t"))
+	cols := []string{"id", "project", "status", "priority", "title"}
+	if showDesc {
+		cols = append(cols, "description")
+	}
+	if showTime {
+		cols = append(cols, "created_at")
 	}
 
+	var rows [][]string
 	for _, t := range tasks {
 		proj := t.ProjectCode
 		if proj == "" {
@@ -225,9 +232,10 @@ func TaskList(ctx *Context, args []string) error {
 			row = append(row, t.CreatedAt.Local().Format("2006-01-02T15:04:05"))
 		}
 
-		fmt.Println(strings.Join(row, "\t"))
+		rows = append(rows, row)
 	}
-	return nil
+
+	return printOutput(os.Stdout, format, noHeader, cols, rows)
 }
 
 // TaskView exibe os detalhes completos de uma tarefa.
