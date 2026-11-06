@@ -22,19 +22,19 @@ func printVersion() {
 func printUsage() {
 	fmt.Println("Usage: task-cli [--db <path>] <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
-	fmt.Println("  add <title> [desc] [-p <code>]        Add a new task (optionally linked to a project via -p)")
-	fmt.Println("  project-add, np <code> <name> [desc]  Create a new project")
-	fmt.Println("  list [status] [-p <code>] [-a] [--done] [-t] [-n] [-F <fmt>]         List tasks (default: TSV, pending; -F table for formatted view)")
-	fmt.Println("  projects, lp [-d] [-t] [-n] [-F <fmt>]                               List all projects (default: TSV; -F table for formatted view)")
-	fmt.Println("  view, show <id> [-t]                  View full task details (optional: -t show timestamps)")
-	fmt.Println("  update <id> [title] [description]     Update a task's title, description, project (-p), priority")
-	fmt.Println("  edit <id>                             Edit task description in an external editor (default: nano)")
-	fmt.Println("  delete <id>                           Soft delete a task by ID")
-	fmt.Println("  set-pending <id>                      Set task status to pending")
-	fmt.Println("  set-in-progress <id>                  Set task status to in-progress")
-	fmt.Println("  set-done <id>                         Set task status to done")
-	fmt.Println("  set-abort <id> [reason]               Set task status to abort (optional reason)")
-	fmt.Println("  set-prio <id> <priority>              Set task priority (low, medium, high, urgent)")
+	fmt.Println("  task [command]                        Manage tasks (subcommands: add, list, view, update, delete, status, prio)")
+	fmt.Println("  project [command]                     Manage projects (subcommands: add, list, view)")
+	fmt.Println("  add <title> [desc] [-p <code>]        Add a new task (alias for 'task add')")
+	fmt.Println("  list [status] [-p <code>] [-a] [--done] [-t] [-n] [-F <fmt>]         List tasks (default: TSV, pending; alias for 'task list')")
+	fmt.Println("  view, show <id> [-t]                  View full task details (alias for 'task view')")
+	fmt.Println("  update <id> [title] [description]     Update a task's title, description, project (-p), priority (alias for 'task update')")
+	fmt.Println("  edit <id>                             Edit task description in an external editor (alias for 'task edit')")
+	fmt.Println("  delete <id>                           Soft delete a task by ID (alias for 'task delete')")
+	fmt.Println("  set-pending <id>                      Set task status to pending (alias for 'task status <id> pending')")
+	fmt.Println("  set-in-progress <id>                  Set task status to in-progress (alias for 'task status <id> in-progress')")
+	fmt.Println("  set-done <id>                         Set task status to done (alias for 'task status <id> done')")
+	fmt.Println("  set-abort <id> [reason]               Set task status to abort (alias for 'task status <id> abort')")
+	fmt.Println("  set-prio <id> <priority>              Set task priority (alias for 'task prio <id> <priority>')")
 	fmt.Println("  doc-add, attach <id> <path> [name]    Link a document to a task")
 	fmt.Println("  doc-list, docs <id>                   List documents linked to a task")
 	fmt.Println("  doc-del, doc-remove <id>              Remove a linked document by ID")
@@ -90,6 +90,12 @@ func main() {
 		return
 
 	case "help":
+		if len(cmdArgs) > 0 {
+			if target, _ := cmd.Root.Resolve(cmdArgs); target != nil && target != cmd.Root {
+				target.PrintHelp(os.Stdout)
+				return
+			}
+		}
 		printUsage()
 		return
 	}

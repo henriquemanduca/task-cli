@@ -563,3 +563,91 @@ func TaskSetPriority(ctx *Context, args []string) error {
 	fmt.Printf("Task %04d priority set to '%s'\n", id, prio)
 	return nil
 }
+
+// TaskStatus altera ou exibe o status de uma tarefa.
+// Uso: task-cli task status <id> [status] [reason]
+// Suporta: pending, in-progress, done, abort
+func TaskStatus(ctx *Context, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("task ID is required.\nUsage: task-cli task status <id> <status> [reason]")
+	}
+
+	// Se apenas 1 argumento foi passado, exibe o status atual da tarefa
+	if len(args) == 1 {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid task ID: %s", args[0])
+		}
+		t, err := ctx.Store.GetTaskByID(id)
+		if err != nil {
+			if errors.Is(err, db.ErrTaskNotFound) {
+				return fmt.Errorf("task with ID %d not found", id)
+			}
+			return fmt.Errorf("database error: %w", err)
+		}
+		if t.Status == db.StatusAbort && t.AbortReason != nil && *t.AbortReason != "" {
+			fmt.Printf("Task %04d status: %s (reason: %s)\n", t.ID, t.Status, *t.AbortReason)
+		} else {
+			fmt.Printf("Task %04d status: %s\n", t.ID, t.Status)
+		}
+		return nil
+	}
+
+	// 2 ou mais argumentos: definir status
+	var id int64
+	var rawStatus string
+	var remaining []string
+
+	id1, err1 := strconv.ParseInt(args[0], 10, 64)
+	if err1 == nil {
+		id = id1
+		rawStatus = args[1]
+		remaining = args[2:]
+	} else {
+		id2, err2 := strconv.ParseInt(args[1], 10, 64)
+		if err2 == nil {
+			id = id2
+			rawStatus = args[0]
+			remaining = args[2:]
+		} else {
+			return fmt.Errorf("invalid task ID: %s", args[0])
+		}
+	}
+
+	statusLower := strings.ToLower(strings.TrimSpace(rawStatus))
+	var targetStatus db.Status
+	switch statusLower {
+	case "pending", "todo", "reopen":
+		targetStatus = db.StatusPending
+	case "in-progress", "start", "started", "progress", "doing":
+		targetStatus = db.StatusInProgress
+	case "done", "complete", "completed", "finish", "finished":
+		targetStatus = db.StatusDone
+	case "abort", "aborted", "cancel", "cancelled":
+		targetStatus = db.StatusAbort
+	default:
+		return fmt.Errorf("invalid status '%s'. Valid options: pending, in-progress, done, abort", rawStatus)
+	}
+
+	var abortReason *string
+	if targetStatus == db.StatusAbort && len(remaining) > 0 {
+		reason := strings.TrimSpace(strings.Join(remaining, " "))
+		if reason != "" {
+			abortReason = &reason
+		}
+	}
+
+	if err := ctx.Store.UpdateStatus(id, targetStatus, abortReason); err != nil {
+		if errors.Is(err, db.ErrTaskNotFound) {
+			return fmt.Errorf("task with ID %d not found", id)
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	if targetStatus == db.StatusAbort && abortReason != nil {
+		fmt.Printf("Task %04d status set to 'abort' (reason: %s)\n", id, *abortReason)
+	} else {
+		fmt.Printf("Task %04d status set to '%s'\n", id, targetStatus)
+	}
+	return nil
+}

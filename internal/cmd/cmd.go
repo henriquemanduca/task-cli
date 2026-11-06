@@ -14,7 +14,6 @@ type CommandFunc func(ctx *Context, args []string) error
 
 // Registry maps command names and aliases to their corresponding handlers.
 var Registry = map[string]CommandFunc{
-	"project-add":     ProjectAdd,
 	"np":              ProjectAdd,
 	"projects":        ProjectList,
 	"lp":              ProjectList,
@@ -31,6 +30,8 @@ var Registry = map[string]CommandFunc{
 	"set-abort":       TaskSetAbort,
 	"set-prio":        TaskSetPriority,
 	"set-priority":    TaskSetPriority,
+	"status":          TaskStatus,
+	"task-status":     TaskStatus,
 	"doc-add":         DocAdd,
 	"attach":          DocAdd,
 	"doc-list":        DocList,
@@ -46,6 +47,13 @@ var Registry = map[string]CommandFunc{
 
 // Execute routes a command to its registered handler.
 func Execute(ctx *Context, command string, args []string) (bool, error) {
+	if Root != nil {
+		target := Root.FindSubcommand(command)
+		if target != nil {
+			return true, Root.Execute(ctx, append([]string{command}, args...))
+		}
+	}
+
 	handler, ok := Registry[command]
 	if !ok {
 		return false, nil

@@ -248,3 +248,99 @@ func TestTaskCommands(t *testing.T) {
 	}
 }
 
+func TestTaskStatus(t *testing.T) {
+	ctx, cleanup := setupTestContext(t)
+	defer cleanup()
+
+	// Create test task
+	task, err := ctx.Store.Add("Task for Status Test", "Desc", nil, "medium")
+	if err != nil {
+		t.Fatalf("failed to add task: %v", err)
+	}
+
+	// 1. Validation errors
+	if err := TaskStatus(ctx, []string{}); err == nil {
+		t.Fatal("expected error for empty args in TaskStatus")
+	}
+	if err := TaskStatus(ctx, []string{"invalid-id"}); err == nil {
+		t.Fatal("expected error for non-numeric ID in single-arg query")
+	}
+	if err := TaskStatus(ctx, []string{"999"}); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not found error for query id 999, got %v", err)
+	}
+	if err := TaskStatus(ctx, []string{"invalid", "done"}); err == nil {
+		t.Fatal("expected error for non-numeric ID in 2-arg set")
+	}
+	if err := TaskStatus(ctx, []string{"1", "invalid-status"}); err == nil {
+		t.Fatal("expected error for invalid status name")
+	}
+	if err := TaskStatus(ctx, []string{"999", "done"}); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not found error for set id 999, got %v", err)
+	}
+
+	// 2. Query initial status
+	out, err := captureStdout(func() error {
+		return TaskStatus(ctx, []string{"1"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error querying status: %v", err)
+	}
+	if !strings.Contains(out, "Task 0001 status: pending") {
+		t.Fatalf("expected pending status, got:\n%s", out)
+	}
+
+	// 3. Set to in-progress
+	err = TaskStatus(ctx, []string{"1", "in-progress"})
+	if err != nil {
+		t.Fatalf("unexpected error setting in-progress: %v", err)
+	}
+	t1, err := ctx.Store.GetTaskByID(task.ID)
+	if err != nil || t1.Status != "in-progress" {
+		t.Fatalf("expected status 'in-progress', got %s (err: %v)", t1.Status, err)
+	}
+
+	// 4. Set to done using reversed args order ("done", "1")
+	err = TaskStatus(ctx, []string{"done", "1"})
+	if err != nil {
+		t.Fatalf("unexpected error setting done: %v", err)
+	}
+	t1, err = ctx.Store.GetTaskByID(task.ID)
+	if err != nil || t1.Status != "done" {
+		t.Fatalf("expected status 'done', got %s (err: %v)", t1.Status, err)
+	}
+
+	// 5. Set to abort with reason
+	err = TaskStatus(ctx, []string{"1", "abort", "Scope no longer applicable"})
+	if err != nil {
+		t.Fatalf("unexpected error setting abort: %v", err)
+	}
+	t1, err = ctx.Store.GetTaskByID(task.ID)
+	if err != nil || t1.Status != "abort" {
+		t.Fatalf("expected status 'abort', got %s (err: %v)", t1.Status, err)
+	}
+	if t1.AbortReason == nil || *t1.AbortReason != "Scope no longer applicable" {
+		t.Fatalf("expected abort reason, got %v", t1.AbortReason)
+	}
+
+	// Query abort status includes reason
+	out, err = captureStdout(func() error {
+		return TaskStatus(ctx, []string{"1"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error querying abort status: %v", err)
+	}
+	if !strings.Contains(out, "Scope no longer applicable") {
+		t.Fatalf("expected abort reason in query output, got:\n%s", out)
+	}
+
+	// 6. Set to pending using alias 'todo'
+	err = TaskStatus(ctx, []string{"1", "todo"})
+	if err != nil {
+		t.Fatalf("unexpected error resetting to pending: %v", err)
+	}
+	t1, err = ctx.Store.GetTaskByID(task.ID)
+	if err != nil || t1.Status != "pending" {
+		t.Fatalf("expected status 'pending', got %s (err: %v)", t1.Status, err)
+	}
+}
+

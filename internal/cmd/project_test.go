@@ -3,6 +3,8 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"task-cli/internal/db"
@@ -85,6 +87,128 @@ func TestProjectList(t *testing.T) {
 
 	if err := ProjectList(ctx, []string{"-d", "-t"}); err != nil {
 		t.Fatalf("unexpected error listing projects with -d and -t: %v", err)
+	}
+}
+
+func TestProjectView(t *testing.T) {
+	ctx, cleanup := setupTestContext(t)
+	defer cleanup()
+
+	// 1. Missing args
+	err := ProjectView(ctx, []string{})
+	if err == nil {
+		t.Fatal("expected error for empty args, got nil")
+	}
+
+	// 2. Nonexistent project
+	err = ProjectView(ctx, []string{"NONEXISTENT"})
+	if err == nil {
+		t.Fatal("expected error for nonexistent project, got nil")
+	}
+
+	// Create a project to view
+	err = ProjectAdd(ctx, []string{"TKC", "Task CLI", "A Go CLI tool"})
+	if err != nil {
+		t.Fatalf("unexpected error creating project: %v", err)
+	}
+
+	// 3. View by code
+	out, err := captureStdout(func() error {
+		return ProjectView(ctx, []string{"TKC"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error viewing project by code: %v", err)
+	}
+	if !strings.Contains(out, "Project: TKC") || !strings.Contains(out, "Name: Task CLI") || !strings.Contains(out, "A Go CLI tool") {
+		t.Fatalf("expected project details in output, got:\n%s", out)
+	}
+
+	// 4. View by numeric ID
+	p, err := ctx.Store.GetProjectByCode("TKC")
+	if err != nil {
+		t.Fatalf("unexpected error getting project: %v", err)
+	}
+
+	out, err = captureStdout(func() error {
+		return ProjectView(ctx, []string{strconv.FormatInt(p.ID, 10)})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error viewing project by ID: %v", err)
+	}
+	if !strings.Contains(out, "Project: TKC") {
+		t.Fatalf("expected project details by ID in output, got:\n%s", out)
+	}
+
+	// 5. View with timestamps (-t)
+	out, err = captureStdout(func() error {
+		return ProjectView(ctx, []string{"TKC", "-t"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error viewing project with -t: %v", err)
+	}
+	if !strings.Contains(out, "Created:") || !strings.Contains(out, "Updated:") {
+		t.Fatalf("expected timestamps in output, got:\n%s", out)
+	}
+}
+
+func TestProjectHierarchicalRouting(t *testing.T) {
+	ctx, cleanup := setupTestContext(t)
+	defer cleanup()
+
+	// 1. project add via Root.Execute
+	err := Root.Execute(ctx, []string{"project", "add", "HIER", "Hierarchical Project", "Hierarchical description"})
+	if err != nil {
+		t.Fatalf("unexpected error running 'project add': %v", err)
+	}
+
+	// 2. project list via alias 'proj ls'
+	out, err := captureStdout(func() error {
+		return Root.Execute(ctx, []string{"proj", "ls"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error running 'proj ls': %v", err)
+	}
+	if !strings.Contains(out, "HIER") || !strings.Contains(out, "Hierarchical Project") {
+		t.Fatalf("expected project in list output, got:\n%s", out)
+	}
+
+	// 3. project view via Root.Execute
+	out, err = captureStdout(func() error {
+		return Root.Execute(ctx, []string{"project", "view", "HIER"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error running 'project view': %v", err)
+	}
+	if !strings.Contains(out, "Project: HIER") || !strings.Contains(out, "Hierarchical description") {
+		t.Fatalf("expected project details in view output, got:\n%s", out)
+	}
+
+	// 4. project show (alias) with -t
+	out, err = captureStdout(func() error {
+		return Root.Execute(ctx, []string{"project", "show", "HIER", "-t"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error running 'project show -t': %v", err)
+	}
+	if !strings.Contains(out, "Created:") {
+		t.Fatalf("expected timestamps in show output, got:\n%s", out)
+	}
+
+	// 5. project with no args prints help
+	out, err = captureStdout(func() error {
+		return Root.Execute(ctx, []string{"project"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error running 'project': %v", err)
+	}
+	if !strings.Contains(out, "Manage projects") || !strings.Contains(out, "Available commands:") {
+		t.Fatalf("expected help output for 'project', got:\n%s", out)
+	}
+
+	// 6. Execute dispatch via top-level command "project"
+	handled, err := Execute(ctx, "project", []string{"list"})
+	if !handled || err != nil {
+		t.Fatalf("expected handled=true, err=nil for Execute('project', ['list']), got handled=%v, err=%v", handled, err)
 	}
 }
 

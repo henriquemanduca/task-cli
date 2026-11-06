@@ -215,6 +215,23 @@ func (s *Store) GetProjectByCode(code string) (*Project, error) {
 	return &p, nil
 }
 
+// GetProjectByID returns a project by its numeric ID.
+func (s *Store) GetProjectByID(id int64) (*Project, error) {
+	query := `SELECT id, code, name, COALESCE(description, ''), created_at, updated_at
+	          FROM projects
+	          WHERE id = ?`
+	row := s.db.QueryRow(query, id)
+
+	var p Project
+	if err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrProjectNotFound
+		}
+		return nil, fmt.Errorf("failed to query project by id: %w", err)
+	}
+	return &p, nil
+}
+
 // Add creates a new task with a title and optional description.
 func (s *Store) Add(title, description string, projectID *int64, priority string) (*Task, error) {
 	now := time.Now().UTC()

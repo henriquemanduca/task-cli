@@ -50,6 +50,18 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("expected ErrProjectNotFound, got %v", err)
 	}
 
+	foundByID, err := store.GetProjectByID(project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectByID failed: %v", err)
+	}
+	if foundByID.Code != project.Code {
+		t.Errorf("expected project code %s, got %s", project.Code, foundByID.Code)
+	}
+
+	if _, err := store.GetProjectByID(99999); !errors.Is(err, ErrProjectNotFound) {
+		t.Errorf("expected ErrProjectNotFound for nonexistent ID, got %v", err)
+	}
+
 	// 2. Add standalone task and project task with title & description
 	taskStandalone, err := store.Add("Standalone Title", "Standalone description", nil, "high")
 	if err != nil {

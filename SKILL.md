@@ -26,11 +26,15 @@ binary, or `./dist/task-cli` from a source checkout (`make build`).
 ## Projects
 
 ```bash
-task-cli np BACKLOG "Product Backlog" "Main project backlog"   # add (alias: project-add)
-task-cli lp                                                     # list (alias: projects), TSV default
-task-cli lp -F table  # formatted table view (shorthand -F, --format table)
-task-cli lp -n        # no header row
-task-cli lp -d -t     # include description and creation date columns
+task-cli project add BACKLOG "Product Backlog" "Main project backlog"   # (alias: create)
+task-cli project list                                                  # (alias: ls), TSV default
+task-cli project list -F table  # formatted table view (shorthand -F, --format table)
+task-cli project list -n        # no header row
+task-cli project list -d -t     # include description and creation date columns
+task-cli project view BACKLOG   # view project details (alias: show)
+task-cli project view BACKLOG -t # with timestamps
+task-cli np BACKLOG "Product Backlog" "Main project backlog"   # shorthand add
+task-cli lp                                                     # shorthand list
 ```
 
 ## Tasks
@@ -39,31 +43,35 @@ Statuses: `pending`, `in-progress`, `done`, `abort`.
 Priorities: `low`, `medium`, `high`, `urgent`.
 
 ```bash
-task-cli add "Standalone Task" "Not linked to any project"
-task-cli add -p BACKLOG "Project Task" "Linked to BACKLOG"
-task-cli add -p BACKLOG --priority high "Urgent Task"
+task-cli task add "Standalone Task" "Not linked to any project" # (aliases: create, new)
+task-cli task add -p BACKLOG "Project Task" "Linked to BACKLOG"
+task-cli task add -p BACKLOG --priority high "Urgent Task"
 
-task-cli list              # pending tasks (default), TSV with header
-task-cli list -F table     # formatted table view (shorthand -F, --format table)
-task-cli list -a           # all tasks, any status
-task-cli list --done       # only completed
-task-cli list in-progress  # filter by status (positional)
-task-cli list -p BACKLOG   # filter by project
-task-cli list -n -t         # no header, with date column
+task-cli task list              # pending tasks (default), TSV with header (aliases: ls)
+task-cli task list -F table     # formatted table view (shorthand -F, --format table)
+task-cli task list -a           # all tasks, any status
+task-cli task list --done       # only completed
+task-cli task list in-progress  # filter by status (positional)
+task-cli task list -p BACKLOG   # filter by project
+task-cli task list -n -t        # no header, with date column
 
-task-cli view 1            # full details, multiline description (alias: show)
-task-cli show 1            # view task description and details
-task-cli view 1 -t         # also show timestamps
-task-cli update 1 "New title"
-task-cli update 1 -p BACKLOG   # move to project
-task-cli update 1 -p none      # detach from project
-task-cli edit 1            # edit description in $EDITOR (default nano)
-task-cli set-prio 1 high
-task-cli set-pending 1
-task-cli set-in-progress 1
-task-cli set-done 1
-task-cli set-abort 1 "Out of scope"
-task-cli delete 1          # soft delete
+task-cli task view 1            # full details, multiline description (aliases: show, get)
+task-cli task view 1 -t         # also show timestamps
+task-cli task update 1 "New title" # (alias: mod)
+task-cli task update 1 -p BACKLOG   # move to project
+task-cli task update 1 -p none      # detach from project
+task-cli task edit 1            # edit description in $EDITOR (default nano)
+task-cli task prio 1 high       # set priority (aliases: priority, set-prio, set-priority)
+task-cli task status 1 in-progress # set status (aliases: set-status)
+task-cli task status 1 abort "Out of scope"
+task-cli task status 1          # view current task status
+task-cli task done 1            # shorthand to mark done
+task-cli task delete 1          # soft delete (aliases: del, rm, remove)
+
+task-cli add "Standalone Task"  # legacy shorthand
+task-cli list                   # legacy shorthand
+task-cli view 1                 # legacy shorthand
+task-cli set-done 1             # legacy shorthand
 ```
 
 ## Document attachments

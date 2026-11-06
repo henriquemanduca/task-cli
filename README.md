@@ -45,46 +45,53 @@ curl -fsSL https://raw.githubusercontent.com/seu-usuario/task-cli/main/install.s
 By default, the SQLite database is located at `~/.task-cli.db` (configurable via `TASK_CLI_DB` env variable or `--db` flag).
 
 ```bash
-# Projects
-./dist/task-cli np BACKLOG "Product Backlog" "Main project backlog"   # alias: project-add
-./dist/task-cli lp                                                     # alias: projects  (TSV output, with header)
-./dist/task-cli lp -n           # Suppress header row
-./dist/task-cli lp -d           # Include description column
-./dist/task-cli lp -t           # Include creation date column
-./dist/task-cli lp -d -t        # Description + date
-./dist/task-cli lp -F table     # Formatted table view (alias: --format table)
+# Projects (aggregated under 'project')
+./dist/task-cli project add BACKLOG "Product Backlog" "Main project backlog"   # alias: create
+./dist/task-cli project list                                                  # alias: ls (TSV output, with header)
+./dist/task-cli project list -n           # Suppress header row
+./dist/task-cli project list -d           # Include description column
+./dist/task-cli project list -t           # Include creation date column
+./dist/task-cli project list -d -t        # Description + date
+./dist/task-cli project list -F table     # Formatted table view (alias: --format table)
+./dist/task-cli project view BACKLOG      # View project details (alias: show)
+./dist/task-cli project view BACKLOG -t   # View project details with timestamps
+./dist/task-cli np BACKLOG "Product Backlog" "Main project backlog"   # legacy shorthand
+./dist/task-cli lp -F table                                           # legacy shorthand
 
-# Tasks
-./dist/task-cli add "Standalone Task" "Not linked to any project"
-./dist/task-cli add -p BACKLOG "Project Task" "Linked to BACKLOG project"
-./dist/task-cli add -p BACKLOG --priority high "Urgent Task"
+# Tasks (aggregated under 'task'; aliases: add, list, view, update, delete, status, prio)
+./dist/task-cli task add "Standalone Task" "Not linked to any project"
+./dist/task-cli task add -p BACKLOG "Project Task" "Linked to BACKLOG project"
+./dist/task-cli task add -p BACKLOG --priority high "Urgent Task"
 # List tasks — TSV output by default; use -F table for human-readable formatted table
-./dist/task-cli list                  # Pending tasks (TSV with header)
-./dist/task-cli list -F table         # Pending tasks as formatted table
-./dist/task-cli list -n               # Pending tasks, no header
-./dist/task-cli list -a               # All tasks (any status)
-./dist/task-cli list -a -F table      # All tasks formatted as table
-./dist/task-cli list --done           # Only completed tasks
-./dist/task-cli list -t               # Include creation date column
-./dist/task-cli list -a -t            # All tasks with creation date
-./dist/task-cli list in-progress
-./dist/task-cli list -p BACKLOG
-./dist/task-cli list -a -p BACKLOG
+./dist/task-cli task list                  # Pending tasks (TSV with header)
+./dist/task-cli task list -F table         # Pending tasks as formatted table
+./dist/task-cli task list -n               # Pending tasks, no header
+./dist/task-cli task list -a               # All tasks (any status)
+./dist/task-cli task list -a -F table      # All tasks formatted as table
+./dist/task-cli task list --done           # Only completed tasks
+./dist/task-cli task list -t               # Include creation date column
+./dist/task-cli task list -a -t            # All tasks with creation date
+./dist/task-cli task list in-progress
+./dist/task-cli task list -p BACKLOG
+./dist/task-cli task list -a -p BACKLOG
 
-# View full task details including description (alias: show; add -t to show timestamps)
-./dist/task-cli view 1
-./dist/task-cli show 1
-./dist/task-cli view 1 -t
-./dist/task-cli update 1 "Study Go static linking"
-./dist/task-cli update 1 -p BACKLOG          # Move to project
-./dist/task-cli update 1 -p none             # Detach from project
-./dist/task-cli edit 1 # Opens $EDITOR (defaults to nano) to edit description
-./dist/task-cli set-prio 1 high
-./dist/task-cli set-pending 1
-./dist/task-cli set-in-progress 1
-./dist/task-cli set-done 1
-./dist/task-cli set-abort 1 "Out of scope"
-./dist/task-cli delete 1
+# View full task details including description (alias: show, get; add -t to show timestamps)
+./dist/task-cli task view 1
+./dist/task-cli task view 1 -t
+./dist/task-cli task update 1 "Study Go static linking"
+./dist/task-cli task update 1 -p BACKLOG          # Move to project
+./dist/task-cli task update 1 -p none             # Detach from project
+./dist/task-cli task edit 1                       # Opens $EDITOR (defaults to nano) to edit description
+./dist/task-cli task prio 1 high                  # Set priority (alias: priority, set-prio)
+./dist/task-cli task status 1 in-progress         # Set status (pending, in-progress, done, abort)
+./dist/task-cli task status 1 abort "Out of scope"
+./dist/task-cli task status 1                     # View current status
+./dist/task-cli task done 1                       # Helper to mark done
+./dist/task-cli task delete 1                     # Soft delete (alias: del, rm, remove)
+./dist/task-cli add "Standalone Task"             # legacy shorthand
+./dist/task-cli list -F table                     # legacy shorthand
+./dist/task-cli view 1                            # legacy shorthand
+./dist/task-cli set-done 1                        # legacy shorthand
 
 # Document attachments
 ./dist/task-cli attach 1 /path/to/spec.pdf                     # alias: doc-add

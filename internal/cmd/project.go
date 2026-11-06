@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"task-cli/internal/db"
@@ -13,7 +14,7 @@ import (
 // ProjectAdd executa a criação de um novo projeto.
 func ProjectAdd(ctx *Context, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("'code' and 'name' are required.\nUsage: task-cli project-add <code> <name> [description]")
+		return fmt.Errorf("'code' and 'name' are required.\nUsage: task-cli project add <code> <name> [description]")
 	}
 
 	code := strings.TrimSpace(args[0])
@@ -104,5 +105,48 @@ func ProjectList(ctx *Context, args []string) error {
 	}
 
 	return printOutput(os.Stdout, format, noHeader, cols, rows)
+}
+
+// ProjectView exibe os detalhes de um projeto específico por código ou ID.
+func ProjectView(ctx *Context, args []string) error {
+	viewCmd := flag.NewFlagSet("project view", flag.ContinueOnError)
+	var showTime bool
+	viewCmd.BoolVar(&showTime, "t", false, "Show timestamps (created_at, updated_at)")
+	viewCmd.BoolVar(&showTime, "time", false, "Show timestamps (created_at, updated_at)")
+
+	flagArgs, posArgs := splitFlagsAndPosArgs(args, nil)
+	if err := viewCmd.Parse(flagArgs); err != nil {
+		return err
+	}
+
+	if len(posArgs) < 1 {
+		return fmt.Errorf("project code or ID is required.\nUsage: task-cli project view <code|id> [-t]")
+	}
+
+	target := strings.TrimSpace(posArgs[0])
+	project, err := ctx.Store.GetProjectByCode(target)
+	if err != nil && errors.Is(err, db.ErrProjectNotFound) {
+		if id, parseErr := strconv.ParseInt(target, 10, 64); parseErr == nil {
+			project, err = ctx.Store.GetProjectByID(id)
+		}
+	}
+
+	if err != nil {
+		if errors.Is(err, db.ErrProjectNotFound) {
+			return fmt.Errorf("project '%s' not found", target)
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	fmt.Printf("Project: %s (ID: %d)\n", project.Code, project.ID)
+	fmt.Printf("Name: %s\n", project.Name)
+	if showTime {
+		fmt.Printf("Created: %s\n", project.CreatedAt.Local().Format("2006-01-02 15:04:05"))
+		fmt.Printf("Updated: %s\n", project.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
+	}
+	if project.Description != "" {
+		fmt.Printf("Description:\n%s\n", project.Description)
+	}
+	return nil
 }
 
