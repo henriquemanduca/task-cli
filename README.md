@@ -98,7 +98,7 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 # Export & Import (JSON)
 ./dist/task-cli export                                        # alias: exp (exports all to stdout)
 ./dist/task-cli export --pretty --out backup.json             # Formatted export to file
-./dist/task-cli export -p BACKLOG --out backlog.json          # Export specific project
+./dist/task-cli export -f BACKLOG --out backlog.json          # Export specific project (-f, --filter, --project)
 ./dist/task-cli export --status pending                       # Export tasks with status filter
 ./dist/task-cli export --include-deleted                      # Include soft-deleted tasks
 ./dist/task-cli export --dry-run                              # Simulate export without writing
@@ -108,6 +108,16 @@ By default, the SQLite database is located at `~/.task-cli.db` (configurable via
 ./dist/task-cli import backup.json --strict                   # Abort on first validation error
 ./dist/task-cli import backup.json --force-docs               # Allow duplicate document attachments
 cat backup.json | ./dist/task-cli imp -                       # Import via stdin pipe
+
+# Flat Aliases (Backwards Compatibility)
+All traditional flat commands route directly to the hierarchical command tree:
+./dist/task-cli add "Quick Task"                              # routes to 'task add'
+./dist/task-cli list                                          # routes to 'task list'
+./dist/task-cli done 1                                        # routes to 'task set-done'
+./dist/task-cli lp                                            # routes to 'project list'
+./dist/task-cli np PROJ "My Project"                          # routes to 'project add'
+./dist/task-cli attach 1 /path/to/doc.pdf                     # routes to 'task doc add'
+./dist/task-cli docs 1                                        # routes to 'task doc list'
 
 # Version and help
 ./dist/task-cli --version

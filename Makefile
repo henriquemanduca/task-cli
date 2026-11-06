@@ -12,11 +12,11 @@ SKILLDIR ?= $(HOME)/.agents/skills/$(APP)
 .PHONY: build build-all clean test checksums run install uninstall install-skill
 
 build:
+	@mkdir -p dist
 	$(BUILD) -o dist/$(APP) .
-	cp dist/$(APP) ./$(APP)
 
 build-all: clean
-	mkdir -p dist
+	@mkdir -p dist
 	GOOS=linux GOARCH=amd64         $(BUILD) -o dist/$(APP)-linux-amd64 .
 	GOOS=linux GOARCH=arm64         $(BUILD) -o dist/$(APP)-linux-arm64 .
 	GOOS=linux GOARCH=arm GOARM=7   $(BUILD) -o dist/$(APP)-linux-armv7 .
@@ -45,4 +45,4 @@ run:
 	go run .
 
 clean:
-	rm -rf dist
+	rm -rf dist $(APP)

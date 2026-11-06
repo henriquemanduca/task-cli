@@ -6,7 +6,7 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 
 ## Build and test
 
-- `make build` — static build (`CGO_ENABLED=0`) to `dist/task-cli`, then copies it to `./task-cli` (both gitignored).
+- `make build` — static build (`CGO_ENABLED=0`) to `dist/task-cli` (gitignored).
 - `make test` — runs `go test ./...`.
 - Single test: `go test ./internal/cmd -run TestTaskCommands` or `go test ./internal/db -run TestStoreOperations`.
 - `make build-all` — cross-compiles Linux amd64/arm64/armv7 into `dist/`; run it before `make checksums` (checksums only matches `dist/task-cli-*`).
@@ -19,6 +19,7 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 
 - `main.go` — global `--db`/`--version` flags, usage text, dispatch.
 - `internal/cmd/` — hierarchical command routing via `Root` in `router.go`; `task.go`, `project.go`, `doc.go`, and `io.go` contain handlers.
+- `internal/cmd/alias.go` — flat aliases table (`FlatAliases`) resolving legacy commands (e.g. `lp`, `np`, `add`, `done`, `attach`) to hierarchical routes for backwards compatibility.
 - `internal/db/db.go` — SQLite store, schema, CRUD; `internal/db/transfer.go` — JSON import/export.
 - Adding a command requires a handler `func(*cmd.Context, []string) error`, registration in `cmd.Root` (`internal/cmd/router.go`), and updates to `README.md`, `main.go:printUsage`, and `SKILL.md` (these are separate and drift easily).
 

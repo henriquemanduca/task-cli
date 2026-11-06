@@ -29,22 +29,58 @@ type CommandFunc func(ctx *Context, args []string) error
 
 // Registry maps command names and aliases to their corresponding handlers.
 var Registry = map[string]CommandFunc{
-	"doc-add":    DocAdd,
-	"attach":     DocAdd,
-	"doc-list":   DocList,
-	"docs":       DocList,
-	"doc-del":    DocDelete,
-	"doc-rm":     DocDelete,
-	"doc-remove": DocDelete,
-	"export":     Export,
-	"exp":        Export,
-	"import":     Import,
-	"imp":        Import,
+	"np":              ProjectAdd,
+	"project-add":     ProjectAdd,
+	"lp":              ProjectList,
+	"projects":        ProjectList,
+	"add":             TaskAdd,
+	"list":            TaskList,
+	"ls":              TaskList,
+	"view":            TaskView,
+	"show":            TaskView,
+	"get":             TaskView,
+	"update":          TaskUpdate,
+	"mod":             TaskUpdate,
+	"edit":            TaskEdit,
+	"delete":          TaskDelete,
+	"del":             TaskDelete,
+	"rm":              TaskDelete,
+	"remove":          TaskDelete,
+	"status":          TaskStatus,
+	"set-status":      TaskStatus,
+	"task-status":     TaskStatus,
+	"prio":            TaskSetPriority,
+	"priority":        TaskSetPriority,
+	"set-prio":        TaskSetPriority,
+	"set-priority":    TaskSetPriority,
+	"set-pending":     TaskSetPending,
+	"pending":         TaskSetPending,
+	"set-in-progress": TaskSetInProgress,
+	"start":           TaskSetInProgress,
+	"set-done":        TaskSetDone,
+	"done":            TaskSetDone,
+	"set-abort":       TaskSetAbort,
+	"abort":           TaskSetAbort,
+	"doc-add":         DocAdd,
+	"attach":          DocAdd,
+	"doc-list":        DocList,
+	"docs":            DocList,
+	"doc-del":         DocDelete,
+	"doc-rm":          DocDelete,
+	"doc-remove":      DocDelete,
+	"export":          Export,
+	"exp":             Export,
+	"import":          Import,
+	"imp":             Import,
 }
 
 // Execute routes a command to its registered handler.
 func Execute(ctx *Context, command string, args []string) (bool, error) {
 	if Root != nil {
+		if targetPath, ok := ResolveFlatAlias(command); ok {
+			return true, Root.Execute(ctx, append(targetPath, args...))
+		}
+
 		target := Root.FindSubcommand(command)
 		if target != nil {
 			return true, Root.Execute(ctx, append([]string{command}, args...))

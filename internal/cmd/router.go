@@ -60,8 +60,14 @@ func (c *Command) FindSubcommand(nameOrAlias string) *Command {
 
 // FindCommand resolves a chain of names or aliases sequentially from this command.
 func (c *Command) FindCommand(names ...string) *Command {
+	lookupNames := names
+	if c == Root && len(names) == 1 {
+		if targetPath, ok := ResolveFlatAlias(names[0]); ok {
+			lookupNames = targetPath
+		}
+	}
 	current := c
-	for _, name := range names {
+	for _, name := range lookupNames {
 		current = current.FindSubcommand(name)
 		if current == nil {
 			return nil
@@ -118,6 +124,10 @@ func (c *Command) Resolve(args []string) (*Command, []string) {
 	current := c
 	remaining := args
 
+	if c == Root {
+		remaining = ExpandAliases(args)
+	}
+
 	for len(remaining) > 0 {
 		arg := remaining[0]
 		sub := current.FindSubcommand(arg)
@@ -139,21 +149,22 @@ func (c *Command) Execute(ctx *Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		if ctx != nil {
-			if gf.Format != "" {
-				ctx.Format = gf.Format
+		if ctx == nil {
+			ctx = &Context{}
+		}
+		if gf.Format != "" {
+			ctx.Format = gf.Format
+		}
+		if gf.DBPath != "" {
+			ctx.DBPath = gf.DBPath
+		}
+		if ctx.Store == nil && gf.DBPath != "" {
+			store, path, err := ResolveStore(gf.DBPath)
+			if err != nil {
+				return err
 			}
-			if gf.DBPath != "" {
-				ctx.DBPath = gf.DBPath
-				if ctx.Store == nil {
-					store, path, err := ResolveStore(gf.DBPath)
-					if err != nil {
-						return err
-					}
-					ctx.Store = store
-					ctx.DBPath = path
-				}
-			}
+			ctx.Store = store
+			ctx.DBPath = path
 		}
 		args = filteredArgs
 	}
@@ -165,6 +176,10 @@ func (c *Command) Execute(ctx *Context, args []string) error {
 		}
 		target, _ := c.Resolve(args[1:])
 		return target.PrintHelp(nil)
+	}
+
+	if c == Root {
+		args = ExpandAliases(args)
 	}
 
 	target, remaining := c.Resolve(args)

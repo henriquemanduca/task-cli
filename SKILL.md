@@ -121,6 +121,7 @@ task-cli task list -a | column -t -s $'\t'                             # human-r
 
 ## Gotchas
 
+- Flat aliases for backwards compatibility: traditional flat commands (e.g. `add`, `list`, `done`, `lp`, `np`, `attach`) map directly to their hierarchical routes.
 - `task list` with no arguments shows **pending** tasks only; use `-a` for everything.
 - `delete` is a soft delete; deleted tasks are hidden from lists and exports
   unless `export --include-deleted`.

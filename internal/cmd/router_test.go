@@ -571,20 +571,20 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 		t.Fatalf("expected handled=true, err=nil for Execute('task', ['list']), got handled=%v, err=%v", handled, err)
 	}
 
-	// 13. Legacy flat commands without group must not be handled
-	handled, _ = Execute(ctx, "add", []string{"Flat Add Task"})
-	if handled {
-		t.Fatal("expected handled=false for legacy flat 'add', domain 'task' is required")
+	// 13. Legacy flat commands are handled and routed via flat aliases
+	handled, err = Execute(ctx, "add", []string{"Flat Add Task"})
+	if !handled || err != nil {
+		t.Fatalf("expected handled=true, err=nil for legacy flat 'add', got handled=%v, err=%v", handled, err)
 	}
 
-	handled, _ = Execute(ctx, "list", []string{})
-	if handled {
-		t.Fatal("expected handled=false for legacy flat 'list', domain 'task' or 'project' is required")
+	handled, err = Execute(ctx, "list", []string{})
+	if !handled || err != nil {
+		t.Fatalf("expected handled=true, err=nil for legacy flat 'list', got handled=%v, err=%v", handled, err)
 	}
 
-	handled, _ = Execute(ctx, "projects", []string{})
-	if handled {
-		t.Fatal("expected handled=false for legacy flat 'projects', domain 'project' is required")
+	handled, err = Execute(ctx, "projects", []string{})
+	if !handled || err != nil {
+		t.Fatalf("expected handled=true, err=nil for legacy flat 'projects', got handled=%v, err=%v", handled, err)
 	}
 }
 
