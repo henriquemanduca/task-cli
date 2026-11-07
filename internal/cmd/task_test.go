@@ -28,13 +28,13 @@ func TestTaskCommands(t *testing.T) {
 	}
 
 	// Add task linked to project via "add -p" (flag first)
-	err = TaskAdd(ctx, []string{"-p", "PROJ", "Buy groceries", "Milk, eggs, bread"})
+	err = TaskAdd(ctx, []string{"-p", "1", "Buy groceries", "Milk, eggs, bread"})
 	if err != nil {
 		t.Fatalf("unexpected error adding task with -p: %v", err)
 	}
 
-	// Add task linked to project with -p at the END (user report case: "add Title Description -p PROJ")
-	err = TaskAdd(ctx, []string{"Teste", "Descricao Teste", "-p", "PROJ"})
+	// Add task linked to project with -p at the END (user report case: "add Title Description -p 1")
+	err = TaskAdd(ctx, []string{"Teste", "Descricao Teste", "-p", "1"})
 	if err != nil {
 		t.Fatalf("unexpected error adding task with -p at end: %v", err)
 	}
@@ -136,6 +136,44 @@ func TestTaskCommands(t *testing.T) {
 	err = TaskUpdate(ctx, []string{"1", "--priority", "high", "Buy fresh groceries"})
 	if err != nil {
 		t.Fatalf("unexpected error updating task: %v", err)
+	}
+
+	// Move task to project by ID
+	err = TaskUpdate(ctx, []string{"1", "-p", "1"})
+	if err != nil {
+		t.Fatalf("unexpected error moving task to project by ID: %v", err)
+	}
+	tUpdated, err := ctx.Store.GetTaskByID(1)
+	if err != nil || tUpdated.ProjectID == nil || *tUpdated.ProjectID != 1 {
+		t.Fatalf("expected task 1 to have ProjectID 1, got %+v (err: %v)", tUpdated, err)
+	}
+
+	// Detach task with -p none
+	err = TaskUpdate(ctx, []string{"1", "-p", "none"})
+	if err != nil {
+		t.Fatalf("unexpected error detaching task from project: %v", err)
+	}
+	tUpdated, err = ctx.Store.GetTaskByID(1)
+	if err != nil || tUpdated.ProjectID != nil {
+		t.Fatalf("expected task 1 ProjectID to be nil, got %+v (err: %v)", tUpdated, err)
+	}
+
+	// TaskUpdate should fail with invalid project ID
+	err = TaskUpdate(ctx, []string{"1", "-p", "invalid-id"})
+	if err == nil {
+		t.Fatal("expected error updating task with non-numeric project ID, got nil")
+	}
+
+	// TaskAdd should fail with invalid project ID
+	err = TaskAdd(ctx, []string{"-p", "invalid-id", "Some Task"})
+	if err == nil {
+		t.Fatal("expected error adding task with non-numeric project ID, got nil")
+	}
+
+	// TaskAdd should fail with non-existent project ID
+	err = TaskAdd(ctx, []string{"-p", "9999", "Some Task"})
+	if err == nil {
+		t.Fatal("expected error adding task with non-existent project ID, got nil")
 	}
 
 	// 5. TaskSetInProgress and TaskSetPending

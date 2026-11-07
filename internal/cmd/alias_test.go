@@ -167,7 +167,7 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 	// 4. Task creation via 'add'
 	var addBuf bytes.Buffer
 	ctx.Out = &addBuf
-	err = Root.Execute(ctx, []string{"add", "-p", "PROJ", "Retro Task", "Retro description"})
+	err = Root.Execute(ctx, []string{"add", "-p", "1", "Retro Task", "Retro description"})
 	if err != nil {
 		t.Fatalf("unexpected error running 'add': %v", err)
 	}

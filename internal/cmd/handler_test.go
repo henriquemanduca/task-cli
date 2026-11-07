@@ -208,11 +208,11 @@ func TestDecoupledActions_IsolatedPipeline(t *testing.T) {
 	}
 
 	// Parse success
-	tArgs, err := taskAction.Parse(ctx, []string{"-p", "TDEC", "--priority", "high", "Isolated Task", "Task details"})
+	tArgs, err := taskAction.Parse(ctx, []string{"-p", "1", "--priority", "high", "Isolated Task", "Task details"})
 	if err != nil {
 		t.Fatalf("unexpected error parsing task add args: %v", err)
 	}
-	if tArgs.Title != "Isolated Task" || tArgs.Priority != "high" || tArgs.ProjectCode != "TDEC" {
+	if tArgs.Title != "Isolated Task" || tArgs.Priority != "high" || tArgs.ProjectID == nil || *tArgs.ProjectID != 1 {
 		t.Errorf("unexpected parsed task args: %+v", tArgs)
 	}
 

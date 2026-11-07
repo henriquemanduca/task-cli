@@ -361,7 +361,7 @@ func NewRootCommand() *Command {
 			Name:        "add",
 			Aliases:     []string{"create", "new"},
 			Description: "Add a new task (optionally linked to a project via -p)",
-			Usage:       "task-cli task add [-p <code>] [--priority <prio>] <title> [description]",
+			Usage:       "task-cli task add [-p <id>] [--priority <prio>] <title> [description]",
 			Run:         TaskAdd,
 		},
 		&Command{
@@ -382,7 +382,7 @@ func NewRootCommand() *Command {
 			Name:        "update",
 			Aliases:     []string{"mod"},
 			Description: "Update a task's title, description, project (-p), priority",
-			Usage:       "task-cli task update <id> [-p <code>] [--priority <prio>] [title] [description]",
+			Usage:       "task-cli task update <id> [-p <id>] [--priority <prio>] [title] [description]",
 			Run:         TaskUpdate,
 		},
 		&Command{

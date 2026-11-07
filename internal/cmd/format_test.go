@@ -39,8 +39,8 @@ func TestTaskListTableFormat(t *testing.T) {
 	defer cleanup()
 
 	_ = ProjectAdd(ctx, []string{"PROJ", "My Project", "Project description"})
-	_ = TaskAdd(ctx, []string{"-p", "PROJ", "First Task", "Description 1"})
-	_ = TaskAdd(ctx, []string{"-p", "PROJ", "Second Task", "Description 2"})
+	_ = TaskAdd(ctx, []string{"-p", "1", "First Task", "Description 1"})
+	_ = TaskAdd(ctx, []string{"-p", "1", "Second Task", "Description 2"})
 
 	// 1. Test table format output
 	out, err := captureStdout(func() error {

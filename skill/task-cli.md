@@ -44,8 +44,8 @@ Priorities: `low`, `medium`, `high`, `urgent`.
 
 ```bash
 task-cli task add "Standalone Task" "Not linked to any project" # (aliases: create, new)
-task-cli task add -p BACKLOG "Project Task" "Linked to BACKLOG"
-task-cli task add -p BACKLOG --priority high "Urgent Task"
+task-cli task add -p 1 "Project Task" "Linked to project ID 1"
+task-cli task add -p 1 --priority high "Urgent Task"
 
 task-cli task list              # pending tasks (default), TSV with header (aliases: ls)
 task-cli task list -F table     # formatted table view (shorthand -F, --format table)
@@ -58,8 +58,8 @@ task-cli task list -n -t        # no header, with date column
 task-cli task view 1            # full details, multiline description (aliases: show, get)
 task-cli task view 1 -t         # also show timestamps
 task-cli task update 1 "New title" # (alias: mod)
-task-cli task update 1 -p BACKLOG   # move to project
-task-cli task update 1 -p none      # detach from project
+task-cli task update 1 -p 1        # move to project ID 1
+task-cli task update 1 -p none     # detach from project
 task-cli task edit 1            # edit description in $EDITOR (default nano)
 task-cli task prio 1 high       # set priority (aliases: priority, set-prio, set-priority)
 task-cli task status 1 in-progress # set status (aliases: set-status)

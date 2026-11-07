@@ -68,7 +68,7 @@ func splitFlagsAndPosArgs(args []string, valueFlags map[string]bool) ([]string, 
 type TaskAddArgs struct {
 	Title       string
 	Description string
-	ProjectCode string
+	ProjectID   *int64
 	Priority    string
 }
 
@@ -84,12 +84,12 @@ type TaskAddAction struct{}
 // Parse parses flags and positional arguments for creating a task.
 func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) {
 	addCmd := flag.NewFlagSet("add", flag.ContinueOnError)
-	var projectCode string
+	var projectStr string
 	var priority string
 
-	addCmd.StringVar(&projectCode, "p", "", "Project code to link task to (shorthand)")
-	addCmd.StringVar(&projectCode, "proj", "", "Project code to link task to")
-	addCmd.StringVar(&projectCode, "project", "", "Project code to link task to")
+	addCmd.StringVar(&projectStr, "p", "", "Project ID to link task to (shorthand)")
+	addCmd.StringVar(&projectStr, "proj", "", "Project ID to link task to")
+	addCmd.StringVar(&projectStr, "project", "", "Project ID to link task to")
 	addCmd.StringVar(&priority, "priority", "medium", "Task priority (e.g. low, medium, high)")
 
 	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
@@ -104,40 +104,47 @@ func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) 
 	}
 
 	if len(posArgs) < 1 {
-		return TaskAddArgs{}, fmt.Errorf("'title' is required.\nUsage: task-cli add [-p <code>] [--priority <prio>] <title> [description]")
+		return TaskAddArgs{}, fmt.Errorf("'title' is required.\nUsage: task-cli add [-p <id>] [--priority <prio>] <title> [description]")
+	}
+
+	var projectID *int64
+	if projectStr != "" {
+		id, err := strconv.ParseInt(projectStr, 10, 64)
+		if err != nil {
+			return TaskAddArgs{}, fmt.Errorf("invalid project ID: %s", projectStr)
+		}
+		projectID = &id
 	}
 
 	title := strings.TrimSpace(posArgs[0])
 	var description string
 	if len(posArgs) > 1 {
-		description = strings.TrimSpace(strings.Join(posArgs[1:], " "))
+		description = strings.Join(posArgs[1:], " ")
 	}
 
 	return TaskAddArgs{
 		Title:       title,
 		Description: description,
-		ProjectCode: projectCode,
+		ProjectID:   projectID,
 		Priority:    priority,
 	}, nil
 }
 
 // Execute persists the new task into the database.
 func (a *TaskAddAction) Execute(ctx *Context, args TaskAddArgs) (*TaskAddResult, error) {
-	var projectID *int64
 	var projectRef string
-	if args.ProjectCode != "" {
-		proj, err := ctx.Store.GetProjectByCode(args.ProjectCode)
+	if args.ProjectID != nil {
+		proj, err := ctx.Store.GetProjectByID(*args.ProjectID)
 		if err != nil {
 			if errors.Is(err, db.ErrProjectNotFound) {
-				return nil, fmt.Errorf("project with code '%s' not found", args.ProjectCode)
+				return nil, fmt.Errorf("project with ID %d not found", *args.ProjectID)
 			}
 			return nil, err
 		}
-		projectID = &proj.ID
 		projectRef = proj.Code
 	}
 
-	task, err := ctx.Store.Add(args.Title, args.Description, projectID, args.Priority)
+	task, err := ctx.Store.Add(args.Title, args.Description, args.ProjectID, args.Priority)
 	if err != nil {
 		return nil, fmt.Errorf("creating task: %w", err)
 	}
@@ -446,7 +453,8 @@ type TaskUpdateArgs struct {
 	ID          int64
 	Title       string
 	Description string
-	ProjectCode string
+	ProjectID   *int64
+	ClearProj   bool
 	Priority    string
 	HasTitle    bool
 	HasDesc     bool
@@ -463,14 +471,14 @@ type TaskUpdateAction struct{}
 // Parse parses arguments and flags for updating a task.
 func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, error) {
 	if len(args) < 1 {
-		return TaskUpdateArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-f <code>] [--priority <prio>] [title] [description]")
+		return TaskUpdateArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-p <id>] [--priority <prio>] [title] [description]")
 	}
 
 	updateCmd := flag.NewFlagSet("update", flag.ContinueOnError)
-	var projectCode string
+	var projectStr string
 	var priority string
-	updateCmd.StringVar(&projectCode, "p", "", "Move task to project code (or 'none' to detach)")
-	updateCmd.StringVar(&projectCode, "project", "", "Move task to project code (or 'none' to detach)")
+	updateCmd.StringVar(&projectStr, "p", "", "Move task to project ID (or 'none' to detach)")
+	updateCmd.StringVar(&projectStr, "project", "", "Move task to project ID (or 'none' to detach)")
 	updateCmd.StringVar(&priority, "priority", "", "Update task priority (e.g. low, medium, high)")
 
 	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
@@ -484,7 +492,7 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 	}
 
 	if len(posArgs) < 1 {
-		return TaskUpdateArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-p <code>] [--priority <prio>] [title] [description]")
+		return TaskUpdateArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-p <id>] [--priority <prio>] [title] [description]")
 	}
 
 	idStr := posArgs[0]
@@ -509,11 +517,27 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 		hasDesc = true
 	}
 
+	var parsedProjectID *int64
+	var clearProj bool
+	if projectStr != "" {
+		cleanProj := strings.Trim(projectStr, ", ")
+		if strings.EqualFold(cleanProj, "none") || cleanProj == "-" {
+			clearProj = true
+		} else {
+			pID, err := strconv.ParseInt(cleanProj, 10, 64)
+			if err != nil {
+				return TaskUpdateArgs{}, fmt.Errorf("invalid project ID: %s", projectStr)
+			}
+			parsedProjectID = &pID
+		}
+	}
+
 	return TaskUpdateArgs{
 		ID:          id,
 		Title:       title,
 		Description: desc,
-		ProjectCode: projectCode,
+		ProjectID:   parsedProjectID,
+		ClearProj:   clearProj,
 		Priority:    priority,
 		HasTitle:    hasTitle,
 		HasDesc:     hasDesc,
@@ -542,20 +566,17 @@ func (a *TaskUpdateAction) Execute(ctx *Context, args TaskUpdateArgs) (*TaskUpda
 		newDesc = args.Description
 	}
 
-	if args.ProjectCode != "" {
-		cleanProj := strings.Trim(args.ProjectCode, ", ")
-		if strings.EqualFold(cleanProj, "none") || cleanProj == "-" {
-			newProjectID = nil
-		} else {
-			proj, err := ctx.Store.GetProjectByCode(cleanProj)
-			if err != nil {
-				if errors.Is(err, db.ErrProjectNotFound) {
-					return nil, fmt.Errorf("project with code '%s' not found", cleanProj)
-				}
-				return nil, fmt.Errorf("database error: %w", err)
+	if args.ClearProj {
+		newProjectID = nil
+	} else if args.ProjectID != nil {
+		proj, err := ctx.Store.GetProjectByID(*args.ProjectID)
+		if err != nil {
+			if errors.Is(err, db.ErrProjectNotFound) {
+				return nil, fmt.Errorf("project with ID %d not found", *args.ProjectID)
 			}
-			newProjectID = &proj.ID
+			return nil, fmt.Errorf("database error: %w", err)
 		}
+		newProjectID = &proj.ID
 	}
 
 	if args.Priority != "" {
