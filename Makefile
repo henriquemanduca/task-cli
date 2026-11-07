@@ -35,7 +35,7 @@ uninstall:
 
 install-skill:
 	@mkdir -p $(SKILLDIR)
-	install -m 644 SKILL.md $(SKILLDIR)/SKILL.md
+	install -m 644 skill/task-cli.md $(SKILLDIR)/SKILL.md
 	@echo "Skill instalada/atualizada em $(SKILLDIR)/SKILL.md"
 
 test:

@@ -222,7 +222,7 @@ func (c *Command) Help() string {
 
 	// Usage line
 	if c.Usage != "" {
-		b.WriteString("Usage:\n  " + c.Usage + "\n")
+		fmt.Fprintf(&b, "Usage:\n  %s\n", c.Usage)
 	} else if len(c.Subcommands) > 0 {
 		b.WriteString(fmt.Sprintf("Usage:\n  %s <command> [arguments]\n", c.CommandPath()))
 	} else {
@@ -231,12 +231,12 @@ func (c *Command) Help() string {
 
 	// Description
 	if c.Description != "" {
-		b.WriteString("\n" + c.Description + "\n")
+		fmt.Fprintf(&b, "\n%s\n", c.Description)
 	}
 
 	// Aliases
 	if len(c.Aliases) > 0 {
-		b.WriteString("\nAliases:\n  " + strings.Join(c.Aliases, ", ") + "\n")
+		fmt.Fprintf(&b, "\nAliases:\n  %s\n", strings.Join(c.Aliases, ", "))
 	}
 
 	// Subcommands

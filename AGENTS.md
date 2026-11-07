@@ -11,7 +11,7 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 - Single test: `go test ./internal/cmd -run TestTaskCommands` or `go test ./internal/db -run TestStoreOperations`.
 - `make build-all` — cross-compiles Linux amd64/arm64/armv7 into `dist/`; run it before `make checksums` (checksums only matches `dist/task-cli-*`).
 - `make run` runs from source; use it only with a throwaway DB.
-- `make install-skill` — installs/updates `SKILL.md` (agent skill derived from README) into `~/.agents/skills/task-cli/` (override with `SKILLDIR`).
+- `make install-skill` — installs/updates `skill/task-cli.md` (agent skill derived from README) into `~/.agents/skills/task-cli/SKILL.md` (override with `SKILLDIR`).
 - No CI, lint, or formatter config exists; `go test ./...` is the only configured verification.
 - README says Go 1.22+, but `go.mod` requires 1.26.8; trust `go.mod`.
 
@@ -21,7 +21,7 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 - `internal/cmd/` — hierarchical command routing via `Root` in `router.go`; `task.go`, `project.go`, `doc.go`, and `io.go` contain handlers.
 - `internal/cmd/alias.go` — flat aliases table (`FlatAliases`) resolving legacy commands (e.g. `lp`, `np`, `add`, `done`, `attach`) to hierarchical routes for backwards compatibility.
 - `internal/db/db.go` — SQLite store, schema, CRUD; `internal/db/transfer.go` — JSON import/export.
-- Adding a command requires a handler `func(*cmd.Context, []string) error`, registration in `cmd.Root` (`internal/cmd/router.go`), and updates to `README.md`, `main.go:printUsage`, and `SKILL.md` (these are separate and drift easily).
+- Adding a command requires a handler `func(*cmd.Context, []string) error`, registration in `cmd.Root` (`internal/cmd/router.go`), and updates to `README.md`, `main.go:printUsage`, and `skill/task-cli.md` (these are separate and drift easily).
 
 ## CLI gotchas
 

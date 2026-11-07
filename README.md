@@ -14,7 +14,7 @@ A CLI task management tool written in Go with embedded **SQLite** storage (pure 
 - `make checksums`: Generates SHA-256 hashes (`dist/checksums.txt`).
 - `make install`: Installs binary to `~/.local/bin` (or `PREFIX/bin`).
 - `make uninstall`: Removes binary from installation directory.
-- `make install-skill`: Installs/updates `SKILL.md` as a global agent skill in `~/.agents/skills/task-cli/` (or `SKILLDIR`).
+- `make install-skill`: Installs/updates `skill/task-cli.md` as a global agent skill in `~/.agents/skills/task-cli/SKILL.md` (or `SKILLDIR`).
 - `make test`: Runs unit tests.
 - `make run`: Runs the application locally via `go run .`.
 - `make clean`: Removes the `dist/` directory.
