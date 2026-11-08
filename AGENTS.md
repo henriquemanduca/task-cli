@@ -29,13 +29,14 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 - Default DB is `~/.task-cli.db`; override with `TASK_CLI_DB` or `--db`. Always use a temp DB when manually exercising commands.
 - Each command parses its own `flag.FlagSet`. `splitFlagsAndPosArgs` lets flags appear before or after positionals, but every value-taking flag must be listed in that command's `valueFlags` map or its value becomes a positional argument.
 - Project filters: `add` and `update` link/move tasks using project ID (`-p/--proj/--project <id>`); `list` filters by project code (`-p/--project <code>`); `export` accepts `-f/--filter/--project/--proj` but not `-p` (README's `export -p ...` example is wrong).
-- Statuses are `pending`, `in-progress`, `done`, `aborted` (with `abort` accepted as alias); priorities are `low`, `medium`, `high`, `urgent`. `list` defaults to pending; `-a/--all/all` shows everything.
-- `delete` is a soft delete (`deleted_at`); normal queries and exports exclude deleted tasks unless export gets `--include-deleted`.
+- Statuses are `pending`, `in-progress`, `done`, `aborted` (with `abort` accepted as alias); `deleted` is set on soft delete; priorities are `low`, `medium`, `high`, `urgent`. `list` defaults to pending; `-a/--all/all` shows everything.
+- `delete` is a soft delete (`deleted_at` set and status changed to `deleted`); normal queries and exports exclude deleted tasks unless export gets `--include-deleted`.
+- Tasks with status `deleted` or `aborted` are immutable: status changes and updates (`update`, `edit`, `prio`, etc.) are prohibited and return an error.
 - TSV list commands print no header at all when there are zero rows. Task TSV rows use `cleanOneLine` for title (description is viewed via `view`/`show`); keep newline/tab stripping when adding fields, and update the header when adding a column.
 
 ## Storage and import/export
 
-- `db.NewStore` creates the schema idempotently and runs ad-hoc legacy migrations (for example `todo` → `pending`); there is no migration framework.
+- `db.NewStore` creates the schema idempotently and runs ad-hoc legacy migrations (for example `todo` → `pending` and `abort` → `aborted`); there is no migration framework.
 - Keep the SQLite driver `modernc.org/sqlite` (pure Go). Do not switch to a CGO driver; static `CGO_ENABLED=0` builds are a project requirement.
 - `attach` requires the file to exist and stores only its absolute path; it does not copy the document into the database.
 - JSON transfer schema is versioned by `db.CurrentSchemaVersion` (currently 1); import rejects other versions.

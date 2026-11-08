@@ -24,7 +24,8 @@ Task CLI is a standalone, single-binary task management tool written in Go with 
 ## Global Invariants
 - **CGO-Free Pure Go**: All database and system interactions avoid CGO to guarantee static binary compilation (`CGO_ENABLED=0`).
 - **Database Concurrency & Integrity**: SQLite runs with `PRAGMA journal_mode=WAL` and `foreign_keys=ON`.
-- **Soft Delete Consistency**: Tasks use soft deletes (`deleted_at`); active queries and JSON exports exclude soft-deleted items unless explicitly requested.
+- **Soft Delete Consistency**: Tasks use soft deletes (`deleted_at`), marking status as `deleted`; active queries and JSON exports exclude soft-deleted items unless explicitly requested.
+- **Terminal Status Immutability**: Tasks with status `deleted` or `aborted` cannot be modified, recovered, or have their status changed.
 - **Strict Format Support**: Output format is constrained to TSV (default) and table views.
 
 ## Global Side Effects

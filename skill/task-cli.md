@@ -40,8 +40,10 @@ task-cli lp                                                     # shorthand list
 
 ## Tasks
 
-Statuses: `pending`, `in-progress`, `done`, `aborted` (aliases: `abort`).
+Statuses: `pending`, `in-progress`, `done`, `aborted` (aliases: `abort`). Soft-deleted tasks have status `deleted`.
 Priorities: `low`, `medium`, `high`, `urgent`.
+
+> **Immutability note**: Tasks with status `deleted` or `aborted` are terminal and immutable. Status changes, recovery, and updates (`update`, `edit`, `prio`) are prohibited and will return an error.
 
 ```bash
 task-cli task add "Standalone Task" "Not linked to any project" # (aliases: create, new)
@@ -53,6 +55,7 @@ task-cli task list -F table     # formatted table view (shorthand -F, --format t
 task-cli task list -a           # all tasks, any status
 task-cli task list --done       # only completed
 task-cli task list in-progress  # filter by status (positional)
+task-cli task list aborted      # filter aborted tasks (alias: abort)
 task-cli task list -p BACKLOG   # filter by project
 task-cli task list -n -t        # no header, with date column
 
@@ -64,10 +67,11 @@ task-cli task update 1 -p none     # detach from project
 task-cli task edit 1            # edit description in $EDITOR (default nano)
 task-cli task prio 1 high       # set priority (aliases: priority, set-prio, set-priority)
 task-cli task status 1 in-progress # set status (aliases: set-status)
-task-cli task status 1 abort "Out of scope"
+task-cli task status 1 abort "Out of scope" # set status to aborted with reason
+task-cli task set-abort 1 "Reason" # abort shortcut (aliases: abort)
 task-cli task status 1          # view current task status
 task-cli task done 1            # shorthand to mark done
-task-cli task delete 1          # soft delete (aliases: del, rm, remove)
+task-cli task delete 1          # soft delete (sets deleted_at and status 'deleted'; aliases: del, rm, remove)
 ```
 
 ## Document attachments
