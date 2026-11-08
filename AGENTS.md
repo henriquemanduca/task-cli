@@ -18,6 +18,7 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 ## Architecture
 
 - `main.go` — global `--db`/`--version` flags, usage text, dispatch.
+- `internal/config/config.go` — discovers the nearest `.taskcli` (walking up to `$HOME`) and parses `.env`-style workspace defaults (currently `PROJECT_CODE`).
 - `internal/cmd/` — hierarchical command routing via `Root` in `router.go`; `task.go`, `project.go`, `doc.go`, and `io.go` contain handlers.
 - `internal/cmd/alias.go` — flat aliases table (`FlatAliases`) resolving legacy commands (e.g. `lp`, `np`, `add`, `done`, `attach`) to hierarchical routes for backwards compatibility.
 - `internal/db/db.go` — SQLite store, schema, CRUD; `internal/db/transfer.go` — JSON import/export.
@@ -25,6 +26,7 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 
 ## CLI gotchas
 
+- Workspace defaults live in `.taskcli` (`.env`-style, nearest file from cwd up to `$HOME`). `PROJECT_CODE` makes `task add` link to that project and `task list` filter by it; an explicit `-p` overrides it, and `-p ""` disables it for that invocation. `version`/`help` skip config loading.
 - Global `--db` and `-F/--format` are transversal flags and can appear anywhere before, between, or after subcommands (e.g. `task-cli --db /tmp/x.db task list` or `task-cli task list --db /tmp/x.db -F table`).
 - Default DB is `~/.task-cli.db`; override with `TASK_CLI_DB` or `--db`. Always use a temp DB when manually exercising commands.
 - Each command parses its own `flag.FlagSet`. `splitFlagsAndPosArgs` lets flags appear before or after positionals, but every value-taking flag must be listed in that command's `valueFlags` map or its value becomes a positional argument.

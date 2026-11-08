@@ -34,6 +34,9 @@ func printUsage() {
 	fmt.Println("  -F, --format <format>                 Output format: tsv (default), table")
 	fmt.Println("  -v, --version                         Display CLI version")
 	fmt.Println("  -h, --help                            Display this help message")
+	fmt.Println("\nWorkspace Config:")
+	fmt.Println("  .taskcli                              .env-style defaults, searched up to $HOME")
+	fmt.Println("                                        (e.g. PROJECT_CODE=<project-code>)")
 }
 
 func main() {

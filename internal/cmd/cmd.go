@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 
+	"task-cli/internal/config"
 	"task-cli/internal/db"
 )
 
@@ -13,6 +14,15 @@ type Context struct {
 	DBPath string
 	Format string
 	Out    io.Writer
+	Config *config.Config
+}
+
+// DefaultProject returns the project code configured for the workspace, if any.
+func (c *Context) DefaultProject() string {
+	if c == nil || c.Config == nil {
+		return ""
+	}
+	return c.Config.Project
 }
 
 // OutWriter returns the configured output writer for the context,

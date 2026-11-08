@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"task-cli/internal/config"
 	"task-cli/internal/db"
 )
 
@@ -60,6 +61,20 @@ func splitFlagsAndPosArgs(args []string, valueFlags map[string]bool) ([]string, 
 	return flagArgs, posArgs
 }
 
+// flagWasSet reports whether any of the named flags was explicitly provided.
+func flagWasSet(fs *flag.FlagSet, names ...string) bool {
+	found := false
+	fs.Visit(func(f *flag.Flag) {
+		for _, name := range names {
+			if f.Name == name {
+				found = true
+				return
+			}
+		}
+	})
+	return found
+}
+
 // -----------------------------------------------------------------------------
 // TaskAdd
 // -----------------------------------------------------------------------------
@@ -69,6 +84,7 @@ type TaskAddArgs struct {
 	Title       string
 	Description string
 	ProjectID   *int64
+	ProjectCode string
 	Priority    string
 }
 
@@ -116,6 +132,13 @@ func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) 
 		projectID = &id
 	}
 
+	// Use the workspace default only when the user did not pass any project
+	// flag; an explicit -p "" disables the default for this invocation.
+	var projectCode string
+	if !flagWasSet(addCmd, "p", "proj", "project") {
+		projectCode = ctx.DefaultProject()
+	}
+
 	title := strings.TrimSpace(posArgs[0])
 	var description string
 	if len(posArgs) > 1 {
@@ -126,25 +149,39 @@ func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) 
 		Title:       title,
 		Description: description,
 		ProjectID:   projectID,
+		ProjectCode: projectCode,
 		Priority:    priority,
 	}, nil
 }
 
 // Execute persists the new task into the database.
 func (a *TaskAddAction) Execute(ctx *Context, args TaskAddArgs) (*TaskAddResult, error) {
+	projectID := args.ProjectID
 	var projectRef string
-	if args.ProjectID != nil {
-		proj, err := ctx.Store.GetProjectByID(*args.ProjectID)
+
+	switch {
+	case projectID != nil:
+		proj, err := ctx.Store.GetProjectByID(*projectID)
 		if err != nil {
 			if errors.Is(err, db.ErrProjectNotFound) {
-				return nil, fmt.Errorf("project with ID %d not found", *args.ProjectID)
+				return nil, fmt.Errorf("project with ID %d not found", *projectID)
 			}
 			return nil, err
 		}
 		projectRef = proj.Code
+	case args.ProjectCode != "":
+		proj, err := ctx.Store.GetProjectByCode(args.ProjectCode)
+		if err != nil {
+			if errors.Is(err, db.ErrProjectNotFound) {
+				return nil, fmt.Errorf("project '%s' configured in %s not found", args.ProjectCode, config.FileName)
+			}
+			return nil, err
+		}
+		projectID = &proj.ID
+		projectRef = proj.Code
 	}
 
-	task, err := ctx.Store.Add(args.Title, args.Description, args.ProjectID, args.Priority)
+	task, err := ctx.Store.Add(args.Title, args.Description, projectID, args.Priority)
 	if err != nil {
 		return nil, fmt.Errorf("creating task: %w", err)
 	}
@@ -239,6 +276,12 @@ func (a *TaskListAction) Parse(ctx *Context, args []string) (TaskListArgs, error
 
 	if err := listCmd.Parse(flagArgs); err != nil {
 		return TaskListArgs{}, err
+	}
+
+	// Use the workspace default only when the user did not pass any project
+	// flag; an explicit -p "" disables the default for this invocation.
+	if !flagWasSet(listCmd, "p", "project") {
+		projectCode = ctx.DefaultProject()
 	}
 
 	resolvedFmt, err := validateFormat(format)

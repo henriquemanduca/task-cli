@@ -3,8 +3,10 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
+	"task-cli/internal/config"
 	"task-cli/internal/db"
 )
 
@@ -122,6 +124,16 @@ func ResolveContext(args []string) (*Context, []string, func(), error) {
 	if cmdName == "help" || cmdName == "-h" || cmdName == "--help" {
 		return ctx, remaining, nil, nil
 	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to determine working directory: %w", err)
+	}
+	cfg, _, err := config.LoadFromDir(cwd)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("workspace config error: %w", err)
+	}
+	ctx.Config = cfg
 
 	store, resolvedPath, err := ResolveStore(gf.DBPath)
 	if err != nil {

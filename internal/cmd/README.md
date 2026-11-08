@@ -8,6 +8,7 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `alias.go:ResolveFlatAlias`
 - `alias.go:ExpandAliases`
 - `cmd.go:Context`
+- `cmd.go:Context.DefaultProject`
 - `cmd.go:CommandFunc`
 - `cmd.go:Execute`
 - `context.go:GlobalFlags`
@@ -48,6 +49,8 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `project.go:ProjectViewAction.Parse`: Requires at least 1 positional argument for project code or `int64` ID.
 - `project.go:ProjectUpdateAction.Parse`: Requires at least 1 positional argument for project code or `int64` ID.
 - `task.go:TaskAddAction.Parse`: Requires at least 1 positional argument for task title.
+- `task.go:TaskAddAction.Parse`, `task.go:TaskListAction.Parse`: When no project flag is explicitly provided, use `Context.DefaultProject()` from `.taskcli`; an explicit `-p ""` disables the default.
+- `task.go:TaskAddAction.Execute`: Resolves the configured project code to its ID (case-insensitive) and fails if the project does not exist.
 - `task.go:TaskListAction.Parse`: Valid task status filters are: `all`, `pending`, `in-progress`, `done`, `aborted` (defaults to `pending`, accepts legacy `abort`).
 - `task.go:TaskViewAction.Parse`, `task.go:TaskUpdateAction.Parse`, `task.go:TaskEditAction.Parse`, `task.go:TaskDeleteAction.Parse`: Require at least 1 positional argument parsed as an `int64` task ID.
 - `task.go:TaskStatusAction.Parse`: Valid status options are `pending`, `in-progress`, `done`, `aborted` (accepting recognized synonyms like `todo`, `reopen`, `start`, `doing`, `complete`, `finish`, `abort`, `cancel`).
@@ -56,7 +59,7 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `task.go:TaskUpdateAction.Execute`, `task.go:TaskEditAction.Execute`, `task.go:TaskStatusAction.Execute`, `task.go:TaskSetPriorityAction.Execute`, `task.go:TaskSetStatusAction.Execute`: Reject updates and status transitions on tasks with status 'deleted' or 'aborted' (or soft-deleted tasks), returning an explanatory user error.
 
 ## Side Effects
-- `context.go:ResolveContext`, `context.go:ResolveStore`: Opens or initializes the SQLite database connection on disk via `db.NewStore` and returns a cleanup callback.
+- `context.go:ResolveContext`, `context.go:ResolveStore`: Reads the nearest `.taskcli` via `config.LoadFromDir` (except for `version`/`help`), then opens or initializes the SQLite database connection on disk via `db.NewStore` and returns a cleanup callback.
 - `doc.go:DocAddAction.Execute`: Inserts document record linked to a task in the SQLite database via `Store.AddDocument`.
 - `doc.go:DocDeleteAction.Execute`: Deletes document record from SQLite database via `Store.DeleteDocument`.
 - `io.go:ExportAction.Execute`: Writes exported JSON data to disk via `os.WriteFile` if `-o`/`--out` flag is provided.

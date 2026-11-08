@@ -23,6 +23,25 @@ binary, or `./dist/task-cli` from a source checkout (`make build`).
   `task-cli task list --db /tmp/x.db -F table`.
 - Use a throwaway DB (`--db /tmp/...`) when testing or demonstrating commands.
 
+## Workspace config (`.taskcli`)
+
+`task-cli` searches for `.taskcli` from the current directory upward, stopping at
+`$HOME` (nearest file wins). Format is `.env`-style:
+
+```bash
+# .taskcli at the project/workspace root
+PROJECT_CODE=BACKLOG
+```
+
+- `task add` links new tasks to that project when `-p` is omitted.
+- `task list` filters by that project when `-p` is omitted.
+- Explicit flags override it: `task list -p OTHER`, `task add -p 2 "Title"`.
+- To ignore the configured project for one invocation, pass an empty value:
+  `task list -p ""` or `task add -p "" "Title"`.
+- Blank lines, `#` comments, `export KEY=VALUE`, and quoted values are accepted.
+- Malformed files fail with file path and line number; `version`/`help` ignore
+  the file.
+
 ## Projects
 
 ```bash
