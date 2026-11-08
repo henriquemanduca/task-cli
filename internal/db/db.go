@@ -26,6 +26,7 @@ const (
 	StatusInProgress Status = "in-progress"
 	StatusDone       Status = "done"
 	StatusAbort      Status = "abort"
+	StatusDeleted    Status = "deleted"
 )
 
 type Project struct {
@@ -432,11 +433,11 @@ func (s *Store) UpdatePriority(id int64, priority string) error {
 	return nil
 }
 
-// Delete performs a soft delete on a task by setting its deleted_at timestamp.
+// Delete performs a soft delete on a task by setting its deleted_at timestamp and updating its status to deleted.
 func (s *Store) Delete(id int64) error {
 	now := time.Now().UTC()
-	query := `UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
-	res, err := s.db.Exec(query, now, now, id)
+	query := `UPDATE tasks SET status = ?, deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
+	res, err := s.db.Exec(query, string(StatusDeleted), now, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to soft delete task: %w", err)
 	}

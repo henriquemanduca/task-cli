@@ -87,7 +87,7 @@ type ImportResult struct {
 
 func isValidStatus(s Status) bool {
 	switch strings.ToLower(strings.TrimSpace(string(s))) {
-	case string(StatusPending), string(StatusInProgress), string(StatusDone), string(StatusAbort):
+	case string(StatusPending), string(StatusInProgress), string(StatusDone), string(StatusAbort), string(StatusDeleted):
 		return true
 	default:
 		return false

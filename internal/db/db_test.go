@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestStoreOperations(t *testing.T) {
@@ -176,6 +177,20 @@ func TestStoreOperations(t *testing.T) {
 
 	if _, err := store.GetTaskByID(taskStandalone.ID); !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound for soft-deleted task, got: %v", err)
+	}
+
+	// Verify status is changed to deleted and deleted_at is set in the database
+	var deletedStatus string
+	var deletedAt *time.Time
+	err = store.db.QueryRow("SELECT status, deleted_at FROM tasks WHERE id = ?", taskStandalone.ID).Scan(&deletedStatus, &deletedAt)
+	if err != nil {
+		t.Fatalf("failed to query deleted task: %v", err)
+	}
+	if deletedStatus != string(StatusDeleted) {
+		t.Errorf("expected status '%s' after delete, got '%s'", StatusDeleted, deletedStatus)
+	}
+	if deletedAt == nil {
+		t.Errorf("expected non-nil deleted_at timestamp")
 	}
 
 	activeTasks, err := store.List("", "")

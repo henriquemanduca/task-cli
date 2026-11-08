@@ -222,9 +222,34 @@ func TestStoreExportData(t *testing.T) {
 		if len(expA.Tasks) != 3 {
 			t.Fatalf("expected 3 tasks in PROJ_A with deleted included, got %d", len(expA.Tasks))
 		}
+		var foundDeletedA3 bool
+		for _, task := range expA.Tasks {
+			if task.ID == tA3.ID {
+				foundDeletedA3 = true
+				if task.Status != StatusDeleted {
+					t.Errorf("expected task A3 status '%s', got '%s'", StatusDeleted, task.Status)
+				}
+			}
+		}
+		if !foundDeletedA3 {
+			t.Errorf("task A3 not found in exported tasks")
+		}
+
 		// Standalone tasks should be 2
 		if len(data.StandaloneTasks) != 2 {
 			t.Fatalf("expected 2 standalone tasks with deleted included, got %d", len(data.StandaloneTasks))
+		}
+		var foundDeletedS2 bool
+		for _, task := range data.StandaloneTasks {
+			if task.ID == tS2.ID {
+				foundDeletedS2 = true
+				if task.Status != StatusDeleted {
+					t.Errorf("expected standalone task 2 status '%s', got '%s'", StatusDeleted, task.Status)
+				}
+			}
+		}
+		if !foundDeletedS2 {
+			t.Errorf("standalone task 2 not found in exported standalone tasks")
 		}
 	})
 }
@@ -515,6 +540,21 @@ func TestStoreImportData(t *testing.T) {
 		_, err = store.ImportData(badPriorityData, ImportOptions{Strict: true})
 		if !errors.Is(err, ErrInvalidPriority) {
 			t.Errorf("expected ErrInvalidPriority, got %v", err)
+		}
+
+		// 5. Valid status 'deleted' in strict mode
+		deletedStatusData := &TransferData{
+			Version: CurrentSchemaVersion,
+			StandaloneTasks: []TaskTransfer{
+				{Title: "Deleted Task", Status: StatusDeleted, Priority: "low"},
+			},
+		}
+		resDeleted, err := store.ImportData(deletedStatusData, ImportOptions{Strict: true})
+		if err != nil {
+			t.Fatalf("expected importing task with StatusDeleted to succeed, got %v", err)
+		}
+		if resDeleted.TasksImported != 1 {
+			t.Errorf("expected 1 task imported, got %d", resDeleted.TasksImported)
 		}
 	})
 

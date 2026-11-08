@@ -182,6 +182,18 @@ func TestExportCmd(t *testing.T) {
 		if len(data.Projects[0].Tasks) != 2 {
 			t.Fatalf("expected 2 tasks in project with --include-deleted, got %d", len(data.Projects[0].Tasks))
 		}
+		var deletedFound bool
+		for _, tsk := range data.Projects[0].Tasks {
+			if tsk.ID == task2.ID {
+				deletedFound = true
+				if tsk.Status != db.StatusDeleted {
+					t.Errorf("expected deleted task status '%s', got '%s'", db.StatusDeleted, tsk.Status)
+				}
+			}
+		}
+		if !deletedFound {
+			t.Errorf("expected deleted task %d in exported tasks", task2.ID)
+		}
 	})
 
 	t.Run("Export with --dry-run", func(t *testing.T) {

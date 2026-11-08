@@ -3,6 +3,8 @@ package cmd
 import (
 	"strings"
 	"testing"
+
+	"task-cli/internal/db"
 )
 
 func TestTaskCommands(t *testing.T) {
@@ -273,6 +275,34 @@ func TestTaskCommands(t *testing.T) {
 	err = TaskDelete(ctx, []string{"1"})
 	if err != nil {
 		t.Fatalf("unexpected error deleting task: %v", err)
+	}
+
+	// Verify task status was set to deleted
+	exportData, err := ctx.Store.ExportData(db.ExportOptions{IncludeDeleted: true})
+	if err != nil {
+		t.Fatalf("ExportData failed: %v", err)
+	}
+	var foundStatus db.Status
+	var found bool
+	for _, p := range exportData.Projects {
+		for _, tsk := range p.Tasks {
+			if tsk.ID == 1 {
+				foundStatus = tsk.Status
+				found = true
+			}
+		}
+	}
+	for _, tsk := range exportData.StandaloneTasks {
+		if tsk.ID == 1 {
+			foundStatus = tsk.Status
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("deleted task 1 not found in export with deleted included")
+	}
+	if foundStatus != db.StatusDeleted {
+		t.Fatalf("expected deleted task status to be '%s', got '%s'", db.StatusDeleted, foundStatus)
 	}
 
 	// Deleting again should return not found

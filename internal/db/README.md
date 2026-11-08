@@ -8,7 +8,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:ErrProjectNotFound`
 - `db.go:ErrTaskNotFound`
 - `db.go:ErrDocumentNotFound`
-- `db.go:Status` (`StatusPending`, `StatusInProgress`, `StatusDone`, `StatusAbort`)
+- `db.go:Status` (`StatusPending`, `StatusInProgress`, `StatusDone`, `StatusAbort`, `StatusDeleted`)
 - `db.go:Project`
 - `db.go:Task`
 - `db.go:Document`
@@ -57,7 +57,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:List`, `db.go:GetTaskByID`: Soft-deleted tasks (`deleted_at IS NOT NULL`) are excluded from queries.
 - `db.go:Update`, `db.go:UpdateTaskDetails`, `db.go:UpdateDescription`, `db.go:UpdateStatus`, `db.go:UpdatePriority`, `db.go:Delete`: Restrict mutations to active tasks (`deleted_at IS NULL`).
 - `transfer.go:ImportData`: `data.Version` must equal `CurrentSchemaVersion` (version 1).
-- `transfer.go:isValidStatus`: Status must be `pending`, `in-progress`, `done`, or `abort`.
+- `transfer.go:isValidStatus`: Status must be `pending`, `in-progress`, `done`, `abort`, or `deleted`.
 - `transfer.go:isValidPriority`: Priority must be `low`, `medium`, `high`, or `urgent`.
 - `transfer.go:opts.Strict`: When strict mode is enabled, enforces non-empty task title, valid status, valid priority, and non-empty project code during import.
 
@@ -69,7 +69,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:Store.UpdateProject`: Updates project name, description, and updated_at in SQLite `projects` table.
 - `db.go:Store.Add`: Inserts task record into SQLite `tasks` table.
 - `db.go:Store.Update`, `db.go:Store.UpdateTaskDetails`, `db.go:Store.UpdateDescription`, `db.go:Store.UpdateStatus`, `db.go:Store.UpdatePriority`: Modifies task records in SQLite `tasks` table and updates `updated_at`.
-- `db.go:Store.Delete`: Performs soft delete by populating `deleted_at` and `updated_at` in SQLite `tasks` table.
+- `db.go:Store.Delete`: Performs soft delete by populating `deleted_at`, updating status to `deleted`, and updating `updated_at` in SQLite `tasks` table.
 - `db.go:Store.AddDocument`: Inserts document path record into SQLite `documents` table.
 - `db.go:Store.DeleteDocument`: Deletes document record from SQLite `documents` table.
 - `transfer.go:Store.ImportData`: Executes transaction mutating `projects`, `tasks`, and `documents` tables, rolling back on error or if `opts.DryRun` is true.
