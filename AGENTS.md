@@ -29,7 +29,7 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 - Default DB is `~/.task-cli.db`; override with `TASK_CLI_DB` or `--db`. Always use a temp DB when manually exercising commands.
 - Each command parses its own `flag.FlagSet`. `splitFlagsAndPosArgs` lets flags appear before or after positionals, but every value-taking flag must be listed in that command's `valueFlags` map or its value becomes a positional argument.
 - Project filters: `add` and `update` link/move tasks using project ID (`-p/--proj/--project <id>`); `list` filters by project code (`-p/--project <code>`); `export` accepts `-f/--filter/--project/--proj` but not `-p` (README's `export -p ...` example is wrong).
-- Statuses are `pending`, `in-progress`, `done`, `abort`; priorities are `low`, `medium`, `high`, `urgent`. `list` defaults to pending; `-a/--all/all` shows everything.
+- Statuses are `pending`, `in-progress`, `done`, `aborted` (with `abort` accepted as alias); priorities are `low`, `medium`, `high`, `urgent`. `list` defaults to pending; `-a/--all/all` shows everything.
 - `delete` is a soft delete (`deleted_at`); normal queries and exports exclude deleted tasks unless export gets `--include-deleted`.
 - TSV list commands print no header at all when there are zero rows. Task TSV rows use `cleanOneLine` for title (description is viewed via `view`/`show`); keep newline/tab stripping when adding fields, and update the header when adding a column.
 

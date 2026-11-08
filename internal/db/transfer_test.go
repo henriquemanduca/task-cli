@@ -81,7 +81,7 @@ func TestStoreExportData(t *testing.T) {
 		t.Fatalf("failed to add task B1: %v", err)
 	}
 	reason := "Requirements cancelled"
-	if err := store.UpdateStatus(tB1.ID, StatusAbort, &reason); err != nil {
+	if err := store.UpdateStatus(tB1.ID, StatusAborted, &reason); err != nil {
 		t.Fatalf("failed to set task B1 to abort: %v", err)
 	}
 
@@ -555,6 +555,39 @@ func TestStoreImportData(t *testing.T) {
 		}
 		if resDeleted.TasksImported != 1 {
 			t.Errorf("expected 1 task imported, got %d", resDeleted.TasksImported)
+		}
+
+		// 6. Valid status 'aborted' and legacy 'abort' in strict mode
+		abortedStatusData := &TransferData{
+			Version: CurrentSchemaVersion,
+			StandaloneTasks: []TaskTransfer{
+				{Title: "Aborted Task", Status: StatusAborted, Priority: "medium"},
+				{Title: "Legacy Abort Task", Status: "abort", Priority: "medium"},
+			},
+		}
+		resAborted, err := store.ImportData(abortedStatusData, ImportOptions{Strict: true})
+		if err != nil {
+			t.Fatalf("expected importing aborted tasks to succeed: %v", err)
+		}
+		if resAborted.TasksImported != 2 {
+			t.Errorf("expected 2 tasks imported, got %d", resAborted.TasksImported)
+		}
+
+		tasks, err := store.List(string(StatusAborted), "")
+		if err != nil {
+			t.Fatalf("failed to list aborted tasks: %v", err)
+		}
+		var foundAborted, foundLegacyAbort bool
+		for _, task := range tasks {
+			if task.Title == "Aborted Task" && task.Status == StatusAborted {
+				foundAborted = true
+			}
+			if task.Title == "Legacy Abort Task" && task.Status == StatusAborted {
+				foundLegacyAbort = true
+			}
+		}
+		if !foundAborted || !foundLegacyAbort {
+			t.Errorf("expected both imported tasks to have status '%s', foundAborted=%v, foundLegacyAbort=%v", StatusAborted, foundAborted, foundLegacyAbort)
 		}
 	})
 

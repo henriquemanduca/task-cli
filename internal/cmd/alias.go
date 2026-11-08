@@ -38,6 +38,8 @@ var FlatAliases = map[string][]string{
 	"done":            {"task", "set-done"},
 	"set-abort":       {"task", "set-abort"},
 	"abort":           {"task", "set-abort"},
+	"set-aborted":     {"task", "set-abort"},
+	"aborted":         {"task", "set-abort"},
 
 	// Documents
 	"attach":     {"task", "doc", "add"},

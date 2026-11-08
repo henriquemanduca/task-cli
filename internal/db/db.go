@@ -25,7 +25,8 @@ const (
 	StatusPending    Status = "pending"
 	StatusInProgress Status = "in-progress"
 	StatusDone       Status = "done"
-	StatusAbort      Status = "abort"
+	StatusAborted    Status = "aborted"
+	StatusAbort      Status = StatusAborted
 	StatusDeleted    Status = "deleted"
 )
 
@@ -136,9 +137,10 @@ func NewStore(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 
-	// Clean up any trailing commas from legacy input and migrate legacy 'todo' status to 'pending'
+	// Clean up any trailing commas from legacy input and migrate legacy 'todo' status to 'pending', 'abort' to 'aborted'
 	_, _ = db.Exec(`UPDATE projects SET code = TRIM(code, ', '), name = TRIM(name, ', ') WHERE code LIKE '%,';`)
 	_, _ = db.Exec(`UPDATE tasks SET status = 'pending' WHERE status = 'todo';`)
+	_, _ = db.Exec(`UPDATE tasks SET status = 'aborted' WHERE status = 'abort';`)
 
 	return &Store{db: db}, nil
 }
@@ -290,8 +292,12 @@ func (s *Store) List(statusFilter, projectCodeFilter string) ([]Task, error) {
 	var args []any
 
 	if statusFilter != "" {
+		sf := statusFilter
+		if sf == "abort" {
+			sf = string(StatusAborted)
+		}
 		query += ` AND t.status = ?`
-		args = append(args, statusFilter)
+		args = append(args, sf)
 	}
 
 	if projectCodeFilter != "" {
@@ -399,6 +405,9 @@ func (s *Store) UpdateDescription(id int64, description string) error {
 
 // UpdateStatus updates the status of an active task and optionally sets an abort reason.
 func (s *Store) UpdateStatus(id int64, status Status, abortReason *string) error {
+	if status == "abort" {
+		status = StatusAborted
+	}
 	now := time.Now().UTC()
 	query := `UPDATE tasks SET status = ?, abort_reason = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
 	res, err := s.db.Exec(query, string(status), abortReason, now, id)

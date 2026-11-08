@@ -87,7 +87,7 @@ type ImportResult struct {
 
 func isValidStatus(s Status) bool {
 	switch strings.ToLower(strings.TrimSpace(string(s))) {
-	case string(StatusPending), string(StatusInProgress), string(StatusDone), string(StatusAbort), string(StatusDeleted):
+	case string(StatusPending), string(StatusInProgress), string(StatusDone), string(StatusAborted), "abort", string(StatusDeleted):
 		return true
 	default:
 		return false
@@ -162,8 +162,12 @@ func (s *Store) ExportData(opts ExportOptions) (*TransferData, error) {
 		query += ` AND t.deleted_at IS NULL`
 	}
 	if opts.Status != "" {
+		st := opts.Status
+		if st == "abort" {
+			st = string(StatusAborted)
+		}
 		query += ` AND t.status = ?`
-		args = append(args, opts.Status)
+		args = append(args, st)
 	}
 	if opts.ProjectCode != "" {
 		query += ` AND p.code = ? COLLATE NOCASE`
@@ -276,6 +280,9 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 			return nil
 		}
 		st := Status(strings.ToLower(strings.TrimSpace(string(t.Status))))
+		if st == "abort" {
+			st = StatusAborted
+		}
 
 		prio := strings.ToLower(strings.TrimSpace(t.Priority))
 		if !isValidPriority(prio) {

@@ -40,7 +40,7 @@ task-cli lp                                                     # shorthand list
 
 ## Tasks
 
-Statuses: `pending`, `in-progress`, `done`, `abort`.
+Statuses: `pending`, `in-progress`, `done`, `aborted` (aliases: `abort`).
 Priorities: `low`, `medium`, `high`, `urgent`.
 
 ```bash

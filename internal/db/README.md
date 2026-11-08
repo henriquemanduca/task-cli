@@ -8,7 +8,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:ErrProjectNotFound`
 - `db.go:ErrTaskNotFound`
 - `db.go:ErrDocumentNotFound`
-- `db.go:Status` (`StatusPending`, `StatusInProgress`, `StatusDone`, `StatusAbort`, `StatusDeleted`)
+- `db.go:Status` (`StatusPending`, `StatusInProgress`, `StatusDone`, `StatusAborted`, `StatusDeleted`)
 - `db.go:Project`
 - `db.go:Task`
 - `db.go:Document`
@@ -57,7 +57,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:List`, `db.go:GetTaskByID`: Soft-deleted tasks (`deleted_at IS NOT NULL`) are excluded from queries.
 - `db.go:Update`, `db.go:UpdateTaskDetails`, `db.go:UpdateDescription`, `db.go:UpdateStatus`, `db.go:UpdatePriority`, `db.go:Delete`: Restrict mutations to active tasks (`deleted_at IS NULL`).
 - `transfer.go:ImportData`: `data.Version` must equal `CurrentSchemaVersion` (version 1).
-- `transfer.go:isValidStatus`: Status must be `pending`, `in-progress`, `done`, `abort`, or `deleted`.
+- `transfer.go:isValidStatus`: Status must be `pending`, `in-progress`, `done`, `aborted` (or legacy `abort`), or `deleted`.
 - `transfer.go:isValidPriority`: Priority must be `low`, `medium`, `high`, or `urgent`.
 - `transfer.go:opts.Strict`: When strict mode is enabled, enforces non-empty task title, valid status, valid priority, and non-empty project code during import.
 

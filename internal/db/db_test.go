@@ -149,16 +149,28 @@ func TestStoreOperations(t *testing.T) {
 
 	// 5. Update status with abort reason
 	reason := "Scope changed"
-	if err := store.UpdateStatus(taskProject.ID, StatusAbort, &reason); err != nil {
+	if err := store.UpdateStatus(taskProject.ID, StatusAborted, &reason); err != nil {
 		t.Fatalf("UpdateStatus abort failed: %v", err)
 	}
 
-	abortedTasks, err := store.List(string(StatusAbort), "")
+	abortedTasks, err := store.List(string(StatusAborted), "")
 	if err != nil {
 		t.Fatalf("List aborted tasks failed: %v", err)
 	}
 	if len(abortedTasks) != 1 || abortedTasks[0].AbortReason == nil || *abortedTasks[0].AbortReason != reason {
 		t.Fatalf("expected 1 aborted task with reason '%s', got %+v", reason, abortedTasks)
+	}
+	if abortedTasks[0].Status != StatusAborted {
+		t.Fatalf("expected status '%s', got '%s'", StatusAborted, abortedTasks[0].Status)
+	}
+
+	// Verify querying with legacy 'abort' string also works
+	legacyList, err := store.List("abort", "")
+	if err != nil {
+		t.Fatalf("List with legacy 'abort' filter failed: %v", err)
+	}
+	if len(legacyList) != 1 || legacyList[0].ID != taskProject.ID {
+		t.Fatalf("expected 1 task with legacy filter, got %d", len(legacyList))
 	}
 
 	// 6. GetTaskByID
@@ -256,5 +268,69 @@ func TestStoreOperations(t *testing.T) {
 	}
 	if len(docsAfterDel) != 1 || docsAfterDel[0].ID != doc2.ID {
 		t.Fatalf("expected 1 document (%d) remaining, got %+v", doc2.ID, docsAfterDel)
+	}
+}
+
+func TestLegacyMigration(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "task-cli-migration-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "migration.db")
+
+	// Initialize store
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("initial NewStore failed: %v", err)
+	}
+
+	// Insert task with legacy 'abort' status and legacy 'todo' status directly into SQLite
+	_, err = store.db.Exec(`INSERT INTO tasks (title, description, status, priority, created_at, updated_at) VALUES ('Legacy Abort Task', 'Desc', 'abort', 'medium', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
+	if err != nil {
+		store.Close()
+		t.Fatalf("failed to insert legacy abort task: %v", err)
+	}
+	_, err = store.db.Exec(`INSERT INTO tasks (title, description, status, priority, created_at, updated_at) VALUES ('Legacy Todo Task', 'Desc', 'todo', 'medium', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
+	if err != nil {
+		store.Close()
+		t.Fatalf("failed to insert legacy todo task: %v", err)
+	}
+	store.Close()
+
+	// Reopen store; NewStore must execute legacy migration
+	reopenedStore, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("reopened NewStore failed: %v", err)
+	}
+	defer reopenedStore.Close()
+
+	tasks, err := reopenedStore.List("", "")
+	if err != nil {
+		t.Fatalf("failed to list tasks: %v", err)
+	}
+
+	var foundAborted, foundPending bool
+	for _, task := range tasks {
+		if task.Title == "Legacy Abort Task" {
+			foundAborted = true
+			if task.Status != StatusAborted {
+				t.Errorf("expected legacy abort task to have status '%s', got '%s'", StatusAborted, task.Status)
+			}
+		}
+		if task.Title == "Legacy Todo Task" {
+			foundPending = true
+			if task.Status != StatusPending {
+				t.Errorf("expected legacy todo task to have status '%s', got '%s'", StatusPending, task.Status)
+			}
+		}
+	}
+
+	if !foundAborted {
+		t.Errorf("legacy abort task not found")
+	}
+	if !foundPending {
+		t.Errorf("legacy todo task not found")
 	}
 }

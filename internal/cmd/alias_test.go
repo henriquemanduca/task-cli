@@ -46,6 +46,8 @@ func TestResolveFlatAlias_Table(t *testing.T) {
 		"done":            {"task", "set-done"},
 		"set-abort":       {"task", "set-abort"},
 		"abort":           {"task", "set-abort"},
+		"set-aborted":     {"task", "set-abort"},
+		"aborted":         {"task", "set-abort"},
 
 		// Documents
 		"attach":     {"task", "doc", "add"},
@@ -241,8 +243,8 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 		t.Fatalf("unexpected error running 'abort': %v", err)
 	}
 	t1, _ = ctx.Store.GetTaskByID(1)
-	if t1.Status != "abort" || t1.AbortReason == nil || *t1.AbortReason != "No longer needed" {
-		t.Fatalf("expected abort with reason, got %v", t1)
+	if t1.Status != "aborted" || t1.AbortReason == nil || *t1.AbortReason != "No longer needed" {
+		t.Fatalf("expected aborted with reason, got %v", t1)
 	}
 
 	err = Root.Execute(ctx, []string{"pending", "1"})

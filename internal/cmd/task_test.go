@@ -229,8 +229,8 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatalf("unexpected error setting abort: %v", err)
 	}
 	t1, err = ctx.Store.GetTaskByID(1)
-	if err != nil || t1.Status != "abort" {
-		t.Fatalf("expected status 'abort', got %s (err: %v)", t1.Status, err)
+	if err != nil || t1.Status != db.StatusAborted {
+		t.Fatalf("expected status 'aborted', got %s (err: %v)", t1.Status, err)
 	}
 	if t1.AbortReason == nil || *t1.AbortReason != "No longer required" {
 		t.Fatalf("expected abort reason 'No longer required', got %v", t1.AbortReason)
@@ -374,27 +374,53 @@ func TestTaskStatus(t *testing.T) {
 	}
 
 	// 5. Set to abort with reason
-	err = TaskStatus(ctx, []string{"1", "abort", "Scope no longer applicable"})
+	out, err = captureStdout(func() error {
+		return TaskStatus(ctx, []string{"1", "abort", "Scope no longer applicable"})
+	})
 	if err != nil {
 		t.Fatalf("unexpected error setting abort: %v", err)
 	}
+	if !strings.Contains(out, "status set to 'aborted'") {
+		t.Fatalf("expected output to contain \"status set to 'aborted'\", got:\n%s", out)
+	}
 	t1, err = ctx.Store.GetTaskByID(task.ID)
-	if err != nil || t1.Status != "abort" {
-		t.Fatalf("expected status 'abort', got %s (err: %v)", t1.Status, err)
+	if err != nil || t1.Status != db.StatusAborted {
+		t.Fatalf("expected status 'aborted', got %s (err: %v)", t1.Status, err)
 	}
 	if t1.AbortReason == nil || *t1.AbortReason != "Scope no longer applicable" {
 		t.Fatalf("expected abort reason, got %v", t1.AbortReason)
 	}
 
-	// Query abort status includes reason
+	// Query abort status includes reason and aborted status
 	out, err = captureStdout(func() error {
 		return TaskStatus(ctx, []string{"1"})
 	})
 	if err != nil {
 		t.Fatalf("unexpected error querying abort status: %v", err)
 	}
-	if !strings.Contains(out, "Scope no longer applicable") {
-		t.Fatalf("expected abort reason in query output, got:\n%s", out)
+	if !strings.Contains(out, "Scope no longer applicable") || !strings.Contains(out, "status: aborted") {
+		t.Fatalf("expected abort reason and status 'aborted' in query output, got:\n%s", out)
+	}
+
+	// Verify listing with 'aborted' and 'abort' filter
+	out, err = captureStdout(func() error {
+		return TaskList(ctx, []string{"aborted"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error listing aborted tasks: %v", err)
+	}
+	if !strings.Contains(out, "aborted") {
+		t.Fatalf("expected aborted task in list output, got:\n%s", out)
+	}
+
+	out, err = captureStdout(func() error {
+		return TaskList(ctx, []string{"abort"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error listing tasks with 'abort' filter: %v", err)
+	}
+	if !strings.Contains(out, "aborted") {
+		t.Fatalf("expected aborted task in list output with 'abort' filter, got:\n%s", out)
 	}
 
 	// 6. Set to pending using alias 'todo'

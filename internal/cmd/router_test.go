@@ -517,8 +517,8 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 		t.Fatalf("unexpected error setting abort: %v", err)
 	}
 	task, err = ctx.Store.GetTaskByID(1)
-	if err != nil || task.Status != "abort" {
-		t.Fatalf("expected status abort, got %v", task.Status)
+	if err != nil || task.Status != "aborted" {
+		t.Fatalf("expected status aborted, got %v", task.Status)
 	}
 	if task.AbortReason == nil || *task.AbortReason != "Requirements changed" {
 		t.Fatalf("expected abort reason 'Requirements changed', got %v", task.AbortReason)

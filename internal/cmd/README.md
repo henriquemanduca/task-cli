@@ -48,9 +48,9 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `project.go:ProjectViewAction.Parse`: Requires at least 1 positional argument for project code or `int64` ID.
 - `project.go:ProjectUpdateAction.Parse`: Requires at least 1 positional argument for project code or `int64` ID.
 - `task.go:TaskAddAction.Parse`: Requires at least 1 positional argument for task title.
-- `task.go:TaskListAction.Parse`: Valid task status filters are: `all`, `pending`, `in-progress`, `done`, `abort` (defaults to `pending`).
+- `task.go:TaskListAction.Parse`: Valid task status filters are: `all`, `pending`, `in-progress`, `done`, `aborted` (defaults to `pending`, accepts legacy `abort`).
 - `task.go:TaskViewAction.Parse`, `task.go:TaskUpdateAction.Parse`, `task.go:TaskEditAction.Parse`, `task.go:TaskDeleteAction.Parse`: Require at least 1 positional argument parsed as an `int64` task ID.
-- `task.go:TaskStatusAction.Parse`: Valid status options are `pending`, `in-progress`, `done`, `abort` (accepting recognized synonyms like `todo`, `reopen`, `start`, `doing`, `complete`, `finish`, `cancel`).
+- `task.go:TaskStatusAction.Parse`: Valid status options are `pending`, `in-progress`, `done`, `aborted` (accepting recognized synonyms like `todo`, `reopen`, `start`, `doing`, `complete`, `finish`, `abort`, `cancel`).
 - `task.go:TaskSetPriorityAction.Parse`: Priority must be one of: `low`, `medium`, `high`, `urgent`.
 - `task.go:TaskSetStatusAction.Parse`: Requires at least 1 positional argument parsed as an `int64` task ID.
 
