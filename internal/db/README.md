@@ -8,6 +8,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:ErrProjectNotFound`
 - `db.go:ErrTaskNotFound`
 - `db.go:ErrDocumentNotFound`
+- `db.go:ErrTaskImmutable`
 - `db.go:Status` (`StatusPending`, `StatusInProgress`, `StatusDone`, `StatusAborted`, `StatusDeleted`)
 - `db.go:Project`
 - `db.go:Task`
@@ -24,6 +25,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:Store.Add`
 - `db.go:Store.List`
 - `db.go:Store.GetTaskByID`
+- `db.go:Store.CheckTaskMutable`
 - `db.go:Store.Update`
 - `db.go:Store.UpdateTaskDetails`
 - `db.go:Store.UpdateDescription`
@@ -55,7 +57,8 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:schema`: `tasks.priority` is `NOT NULL DEFAULT 'medium'`.
 - `db.go:schema`: `documents.task_id` is `NOT NULL` references `tasks(id) ON DELETE CASCADE`.
 - `db.go:List`, `db.go:GetTaskByID`: Soft-deleted tasks (`deleted_at IS NOT NULL`) are excluded from queries.
-- `db.go:Update`, `db.go:UpdateTaskDetails`, `db.go:UpdateDescription`, `db.go:UpdateStatus`, `db.go:UpdatePriority`, `db.go:Delete`: Restrict mutations to active tasks (`deleted_at IS NULL`).
+- `db.go:Update`, `db.go:UpdateTaskDetails`, `db.go:UpdateDescription`, `db.go:UpdateStatus`, `db.go:UpdatePriority`: Tasks with status 'deleted' or 'aborted' (or `deleted_at IS NOT NULL`) are immutable and cannot be updated or transition status, returning `ErrTaskImmutable`. Active task mutations require `deleted_at IS NULL`.
+- `db.go:Delete`: Restrict soft deletion to active tasks (`deleted_at IS NULL`).
 - `transfer.go:ImportData`: `data.Version` must equal `CurrentSchemaVersion` (version 1).
 - `transfer.go:isValidStatus`: Status must be `pending`, `in-progress`, `done`, `aborted` (or legacy `abort`), or `deleted`.
 - `transfer.go:isValidPriority`: Priority must be `low`, `medium`, `high`, or `urgent`.

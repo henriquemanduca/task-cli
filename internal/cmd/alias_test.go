@@ -238,6 +238,15 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 		t.Fatalf("expected done, got %s", t1.Status)
 	}
 
+	err = Root.Execute(ctx, []string{"pending", "1"})
+	if err != nil {
+		t.Fatalf("unexpected error running 'pending': %v", err)
+	}
+	t1, _ = ctx.Store.GetTaskByID(1)
+	if t1.Status != "pending" {
+		t.Fatalf("expected pending, got %s", t1.Status)
+	}
+
 	err = Root.Execute(ctx, []string{"abort", "1", "No longer needed"})
 	if err != nil {
 		t.Fatalf("unexpected error running 'abort': %v", err)
@@ -247,13 +256,10 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 		t.Fatalf("expected aborted with reason, got %v", t1)
 	}
 
+	// Cannot reset an aborted task to pending
 	err = Root.Execute(ctx, []string{"pending", "1"})
-	if err != nil {
-		t.Fatalf("unexpected error running 'pending': %v", err)
-	}
-	t1, _ = ctx.Store.GetTaskByID(1)
-	if t1.Status != "pending" {
-		t.Fatalf("expected pending, got %s", t1.Status)
+	if err == nil {
+		t.Fatal("expected error running 'pending' on aborted task, got nil")
 	}
 
 	// 10. Document management via flat aliases: 'attach', 'docs', 'doc-rm'

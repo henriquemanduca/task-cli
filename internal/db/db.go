@@ -17,6 +17,7 @@ var (
 	ErrProjectNotFound   = errors.New("project not found")
 	ErrTaskNotFound      = errors.New("task not found")
 	ErrDocumentNotFound  = errors.New("document not found")
+	ErrTaskImmutable     = errors.New("cannot modify task with status deleted or aborted")
 )
 
 type Status string
@@ -349,8 +350,35 @@ func (s *Store) GetTaskByID(id int64) (*Task, error) {
 	return &t, nil
 }
 
+// CheckTaskMutable verifies whether a task exists and is in an editable state.
+// Returns nil if the task is active and mutable.
+// Returns ErrTaskNotFound if the task does not exist in the database.
+// Returns ErrTaskImmutable if the task is deleted (deleted_at IS NOT NULL or status = 'deleted') or aborted.
+func (s *Store) CheckTaskMutable(id int64) error {
+	query := `SELECT status, deleted_at FROM tasks WHERE id = ?`
+	var st string
+	var deletedAt *time.Time
+	err := s.db.QueryRow(query, id).Scan(&st, &deletedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrTaskNotFound
+		}
+		return fmt.Errorf("failed to query task status: %w", err)
+	}
+
+	status := Status(st)
+	if deletedAt != nil || status == StatusDeleted || status == StatusAborted || status == "abort" {
+		return ErrTaskImmutable
+	}
+
+	return nil
+}
+
 // Update updates the title and description of an active task.
 func (s *Store) Update(id int64, title, description string) error {
+	if err := s.CheckTaskMutable(id); err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	query := `UPDATE tasks SET title = ?, description = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
 	res, err := s.db.Exec(query, title, description, now, id)
@@ -369,6 +397,9 @@ func (s *Store) Update(id int64, title, description string) error {
 
 // UpdateTaskDetails updates title, description, project_id, and priority of an active task.
 func (s *Store) UpdateTaskDetails(id int64, title, description string, projectID *int64, priority string) error {
+	if err := s.CheckTaskMutable(id); err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	query := `UPDATE tasks SET title = ?, description = ?, project_id = ?, priority = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
 	res, err := s.db.Exec(query, title, description, projectID, priority, now, id)
@@ -387,6 +418,9 @@ func (s *Store) UpdateTaskDetails(id int64, title, description string, projectID
 
 // UpdateDescription updates only the description of an active task.
 func (s *Store) UpdateDescription(id int64, description string) error {
+	if err := s.CheckTaskMutable(id); err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	query := `UPDATE tasks SET description = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
 	res, err := s.db.Exec(query, description, now, id)
@@ -405,6 +439,9 @@ func (s *Store) UpdateDescription(id int64, description string) error {
 
 // UpdateStatus updates the status of an active task and optionally sets an abort reason.
 func (s *Store) UpdateStatus(id int64, status Status, abortReason *string) error {
+	if err := s.CheckTaskMutable(id); err != nil {
+		return err
+	}
 	if status == "abort" {
 		status = StatusAborted
 	}
@@ -426,6 +463,9 @@ func (s *Store) UpdateStatus(id int64, status Status, abortReason *string) error
 
 // UpdatePriority updates the priority of an active task.
 func (s *Store) UpdatePriority(id int64, priority string) error {
+	if err := s.CheckTaskMutable(id); err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	query := `UPDATE tasks SET priority = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
 	res, err := s.db.Exec(query, priority, now, id)

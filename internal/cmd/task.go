@@ -549,6 +549,16 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 
 // Execute updates task details in the database.
 func (a *TaskUpdateAction) Execute(ctx *Context, args TaskUpdateArgs) (*TaskUpdateResult, error) {
+	if err := ctx.Store.CheckTaskMutable(args.ID); err != nil {
+		if errors.Is(err, db.ErrTaskNotFound) {
+			return nil, fmt.Errorf("task with ID %d not found", args.ID)
+		}
+		if errors.Is(err, db.ErrTaskImmutable) {
+			return nil, fmt.Errorf("cannot update task with ID %d: task is deleted or aborted", args.ID)
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
 	existing, err := ctx.Store.GetTaskByID(args.ID)
 	if err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
@@ -587,6 +597,12 @@ func (a *TaskUpdateAction) Execute(ctx *Context, args TaskUpdateArgs) (*TaskUpda
 	}
 
 	if err := ctx.Store.UpdateTaskDetails(args.ID, newTitle, newDesc, newProjectID, newPriority); err != nil {
+		if errors.Is(err, db.ErrTaskNotFound) {
+			return nil, fmt.Errorf("task with ID %d not found", args.ID)
+		}
+		if errors.Is(err, db.ErrTaskImmutable) {
+			return nil, fmt.Errorf("cannot update task with ID %d: task is deleted or aborted", args.ID)
+		}
 		return nil, fmt.Errorf("updating task: %w", err)
 	}
 
@@ -641,6 +657,16 @@ func (a *TaskEditAction) Parse(ctx *Context, args []string) (TaskEditArgs, error
 
 // Execute opens an external text editor and saves modified task descriptions.
 func (a *TaskEditAction) Execute(ctx *Context, args TaskEditArgs) (*TaskEditResult, error) {
+	if err := ctx.Store.CheckTaskMutable(args.ID); err != nil {
+		if errors.Is(err, db.ErrTaskNotFound) {
+			return nil, fmt.Errorf("task with ID %d not found", args.ID)
+		}
+		if errors.Is(err, db.ErrTaskImmutable) {
+			return nil, fmt.Errorf("cannot edit task with ID %d: task is deleted or aborted", args.ID)
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
 	t, err := ctx.Store.GetTaskByID(args.ID)
 	if err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
@@ -697,6 +723,12 @@ func (a *TaskEditAction) Execute(ctx *Context, args TaskEditArgs) (*TaskEditResu
 	}
 
 	if err := ctx.Store.UpdateDescription(args.ID, newDesc); err != nil {
+		if errors.Is(err, db.ErrTaskNotFound) {
+			return nil, fmt.Errorf("task with ID %d not found", args.ID)
+		}
+		if errors.Is(err, db.ErrTaskImmutable) {
+			return nil, fmt.Errorf("cannot edit task with ID %d: task is deleted or aborted", args.ID)
+		}
 		return nil, fmt.Errorf("updating task description: %w", err)
 	}
 
@@ -890,6 +922,9 @@ func (a *TaskStatusAction) Execute(ctx *Context, args TaskStatusArgs) (*TaskStat
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
 		}
+		if errors.Is(err, db.ErrTaskImmutable) {
+			return nil, fmt.Errorf("cannot change status of task with ID %d: task is deleted or aborted", args.ID)
+		}
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
@@ -976,6 +1011,9 @@ func (a *TaskSetPriorityAction) Execute(ctx *Context, args TaskSetPriorityArgs) 
 	if err := ctx.Store.UpdatePriority(args.ID, args.Priority); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
+		}
+		if errors.Is(err, db.ErrTaskImmutable) {
+			return nil, fmt.Errorf("cannot update priority of task with ID %d: task is deleted or aborted", args.ID)
 		}
 		return nil, fmt.Errorf("database error: %w", err)
 	}
@@ -1071,6 +1109,9 @@ func (a *TaskSetStatusAction) Execute(ctx *Context, args TaskSetStatusArgs) (*Ta
 	if err := ctx.Store.UpdateStatus(args.ID, args.Status, args.Reason); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
+		}
+		if errors.Is(err, db.ErrTaskImmutable) {
+			return nil, fmt.Errorf("cannot change status of task with ID %d: task is deleted or aborted", args.ID)
 		}
 		return nil, fmt.Errorf("database error: %w", err)
 	}

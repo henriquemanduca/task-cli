@@ -224,29 +224,6 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatalf("unexpected error listing done tasks: %v", err)
 	}
 
-	err = TaskSetAbort(ctx, []string{"1", "No longer required"})
-	if err != nil {
-		t.Fatalf("unexpected error setting abort: %v", err)
-	}
-	t1, err = ctx.Store.GetTaskByID(1)
-	if err != nil || t1.Status != db.StatusAborted {
-		t.Fatalf("expected status 'aborted', got %s (err: %v)", t1.Status, err)
-	}
-	if t1.AbortReason == nil || *t1.AbortReason != "No longer required" {
-		t.Fatalf("expected abort reason 'No longer required', got %v", t1.AbortReason)
-	}
-
-	// Validation errors for set-abort and set-done
-	if err := TaskSetDone(ctx, []string{}); err == nil {
-		t.Fatal("expected error for empty args in set-done")
-	}
-	if err := TaskSetAbort(ctx, []string{}); err == nil {
-		t.Fatal("expected error for empty args in set-abort")
-	}
-	if err := TaskSetAbort(ctx, []string{"invalid-id"}); err == nil {
-		t.Fatal("expected error for non-numeric ID in set-abort")
-	}
-
 	// 7. TaskSetPriority
 	err = TaskSetPriority(ctx, []string{"1", "urgent"})
 	if err != nil {
@@ -269,6 +246,34 @@ func TestTaskCommands(t *testing.T) {
 	}
 	if err := TaskSetPriority(ctx, []string{"999", "high"}); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("expected not found error for id 999, got %v", err)
+	}
+
+	err = TaskSetAbort(ctx, []string{"1", "No longer required"})
+	if err != nil {
+		t.Fatalf("unexpected error setting abort: %v", err)
+	}
+	t1, err = ctx.Store.GetTaskByID(1)
+	if err != nil || t1.Status != db.StatusAborted {
+		t.Fatalf("expected status 'aborted', got %s (err: %v)", t1.Status, err)
+	}
+	if t1.AbortReason == nil || *t1.AbortReason != "No longer required" {
+		t.Fatalf("expected abort reason 'No longer required', got %v", t1.AbortReason)
+	}
+
+	// Cannot modify priority or status of aborted task
+	if err := TaskSetPriority(ctx, []string{"1", "low"}); err == nil {
+		t.Fatal("expected error updating priority of aborted task, got nil")
+	}
+
+	// Validation errors for set-abort and set-done
+	if err := TaskSetDone(ctx, []string{}); err == nil {
+		t.Fatal("expected error for empty args in set-done")
+	}
+	if err := TaskSetAbort(ctx, []string{}); err == nil {
+		t.Fatal("expected error for empty args in set-abort")
+	}
+	if err := TaskSetAbort(ctx, []string{"invalid-id"}); err == nil {
+		t.Fatal("expected error for non-numeric ID in set-abort")
 	}
 
 	// 8. TaskDelete
@@ -423,14 +428,120 @@ func TestTaskStatus(t *testing.T) {
 		t.Fatalf("expected aborted task in list output with 'abort' filter, got:\n%s", out)
 	}
 
-	// 6. Set to pending using alias 'todo'
+	// 6. Cannot reset aborted task to pending
 	err = TaskStatus(ctx, []string{"1", "todo"})
-	if err != nil {
-		t.Fatalf("unexpected error resetting to pending: %v", err)
+	if err == nil {
+		t.Fatal("expected error resetting aborted task to pending, got nil")
 	}
 	t1, err = ctx.Store.GetTaskByID(task.ID)
-	if err != nil || t1.Status != "pending" {
-		t.Fatalf("expected status 'pending', got %s (err: %v)", t1.Status, err)
+	if err != nil || t1.Status != db.StatusAborted {
+		t.Fatalf("expected status 'aborted', got %s (err: %v)", t1.Status, err)
+	}
+}
+
+func TestImmutableTasksCmd_AbortedAndDeleted(t *testing.T) {
+	ctx, _ := setupTestContext(t)
+
+	// Add initial tasks
+	if err := TaskAdd(ctx, []string{"Task One", "Description 1"}); err != nil {
+		t.Fatalf("failed to add task 1: %v", err)
+	}
+	if err := TaskAdd(ctx, []string{"Task Two", "Description 2"}); err != nil {
+		t.Fatalf("failed to add task 2: %v", err)
+	}
+
+	// 1. Abort Task 1
+	if err := TaskSetAbort(ctx, []string{"1", "Cancelled"}); err != nil {
+		t.Fatalf("failed to abort task 1: %v", err)
+	}
+
+	// Status transitions on aborted task must fail
+	type transitionTest struct {
+		name string
+		fn   func() error
+	}
+	statusTransitions := []transitionTest{
+		{"TaskSetPending", func() error { return TaskSetPending(ctx, []string{"1"}) }},
+		{"TaskSetInProgress", func() error { return TaskSetInProgress(ctx, []string{"1"}) }},
+		{"TaskSetDone", func() error { return TaskSetDone(ctx, []string{"1"}) }},
+		{"TaskSetAbort", func() error { return TaskSetAbort(ctx, []string{"1"}) }},
+		{"TaskStatus pending", func() error { return TaskStatus(ctx, []string{"1", "pending"}) }},
+		{"TaskStatus in-progress", func() error { return TaskStatus(ctx, []string{"1", "in-progress"}) }},
+		{"TaskStatus done", func() error { return TaskStatus(ctx, []string{"1", "done"}) }},
+		{"TaskStatus abort", func() error { return TaskStatus(ctx, []string{"1", "abort"}) }},
+	}
+	for _, tc := range statusTransitions {
+		err := tc.fn()
+		if err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+			t.Errorf("expected 'deleted or aborted' error for %s, got: %v", tc.name, err)
+		}
+	}
+
+	// Updates on aborted task must fail
+	if err := TaskUpdate(ctx, []string{"1", "New Title"}); err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+		t.Errorf("expected 'deleted or aborted' error for TaskUpdate, got: %v", err)
+	}
+	if err := TaskUpdate(ctx, []string{"1", "--priority", "high"}); err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+		t.Errorf("expected 'deleted or aborted' error for TaskUpdate priority, got: %v", err)
+	}
+	if err := TaskEdit(ctx, []string{"1"}); err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+		t.Errorf("expected 'deleted or aborted' error for TaskEdit, got: %v", err)
+	}
+	if err := TaskSetPriority(ctx, []string{"1", "high"}); err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+		t.Errorf("expected 'deleted or aborted' error for TaskSetPriority, got: %v", err)
+	}
+
+	// Querying status of aborted task must still succeed
+	out, err := captureStdout(func() error {
+		return TaskStatus(ctx, []string{"1"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error querying status of aborted task: %v", err)
+	}
+	if !strings.Contains(out, "status: aborted") {
+		t.Errorf("expected query output to include status aborted, got: %s", out)
+	}
+
+	// 2. Soft-delete Task 2
+	if err := TaskDelete(ctx, []string{"2"}); err != nil {
+		t.Fatalf("failed to delete task 2: %v", err)
+	}
+
+	// Status transitions on deleted task must fail
+	deletedTransitions := []transitionTest{
+		{"TaskSetPending", func() error { return TaskSetPending(ctx, []string{"2"}) }},
+		{"TaskSetInProgress", func() error { return TaskSetInProgress(ctx, []string{"2"}) }},
+		{"TaskSetDone", func() error { return TaskSetDone(ctx, []string{"2"}) }},
+		{"TaskSetAbort", func() error { return TaskSetAbort(ctx, []string{"2"}) }},
+		{"TaskStatus pending", func() error { return TaskStatus(ctx, []string{"2", "pending"}) }},
+	}
+	for _, tc := range deletedTransitions {
+		err := tc.fn()
+		if err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+			t.Errorf("expected 'deleted or aborted' error for deleted task %s, got: %v", tc.name, err)
+		}
+	}
+
+	// Updates on deleted task must fail
+	if err := TaskUpdate(ctx, []string{"2", "New Title"}); err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+		t.Errorf("expected 'deleted or aborted' error for TaskUpdate on deleted task, got: %v", err)
+	}
+	if err := TaskEdit(ctx, []string{"2"}); err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+		t.Errorf("expected 'deleted or aborted' error for TaskEdit on deleted task, got: %v", err)
+	}
+	if err := TaskSetPriority(ctx, []string{"2", "urgent"}); err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
+		t.Errorf("expected 'deleted or aborted' error for TaskSetPriority on deleted task, got: %v", err)
+	}
+
+	// 3. Non-existent task returns not found error
+	if err := TaskSetPending(ctx, []string{"999"}); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' error for TaskSetPending on non-existent task, got: %v", err)
+	}
+	if err := TaskUpdate(ctx, []string{"999", "Title"}); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' error for TaskUpdate on non-existent task, got: %v", err)
+	}
+	if err := TaskEdit(ctx, []string{"999"}); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' error for TaskEdit on non-existent task, got: %v", err)
 	}
 }
 

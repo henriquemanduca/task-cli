@@ -53,6 +53,7 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `task.go:TaskStatusAction.Parse`: Valid status options are `pending`, `in-progress`, `done`, `aborted` (accepting recognized synonyms like `todo`, `reopen`, `start`, `doing`, `complete`, `finish`, `abort`, `cancel`).
 - `task.go:TaskSetPriorityAction.Parse`: Priority must be one of: `low`, `medium`, `high`, `urgent`.
 - `task.go:TaskSetStatusAction.Parse`: Requires at least 1 positional argument parsed as an `int64` task ID.
+- `task.go:TaskUpdateAction.Execute`, `task.go:TaskEditAction.Execute`, `task.go:TaskStatusAction.Execute`, `task.go:TaskSetPriorityAction.Execute`, `task.go:TaskSetStatusAction.Execute`: Reject updates and status transitions on tasks with status 'deleted' or 'aborted' (or soft-deleted tasks), returning an explanatory user error.
 
 ## Side Effects
 - `context.go:ResolveContext`, `context.go:ResolveStore`: Opens or initializes the SQLite database connection on disk via `db.NewStore` and returns a cleanup callback.

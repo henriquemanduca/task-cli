@@ -511,7 +511,17 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 		t.Fatalf("expected status in-progress, got %v", task.Status)
 	}
 
-	// 8. task status set to abort with reason
+	// 8. task done helper
+	err = Root.Execute(ctx, []string{"task", "done", "1"})
+	if err != nil {
+		t.Fatalf("unexpected error running 'task done': %v", err)
+	}
+	task, err = ctx.Store.GetTaskByID(1)
+	if err != nil || task.Status != "done" {
+		t.Fatalf("expected status done, got %v", task.Status)
+	}
+
+	// 9. task status set to abort with reason
 	err = Root.Execute(ctx, []string{"task", "status", "1", "abort", "Requirements changed"})
 	if err != nil {
 		t.Fatalf("unexpected error setting abort: %v", err)
@@ -524,14 +534,10 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 		t.Fatalf("expected abort reason 'Requirements changed', got %v", task.AbortReason)
 	}
 
-	// 9. task done helper
+	// Cannot change status of aborted task
 	err = Root.Execute(ctx, []string{"task", "done", "1"})
-	if err != nil {
-		t.Fatalf("unexpected error running 'task done': %v", err)
-	}
-	task, err = ctx.Store.GetTaskByID(1)
-	if err != nil || task.Status != "done" {
-		t.Fatalf("expected status done, got %v", task.Status)
+	if err == nil {
+		t.Fatal("expected error running 'task done' on aborted task, got nil")
 	}
 
 	// 10. task delete

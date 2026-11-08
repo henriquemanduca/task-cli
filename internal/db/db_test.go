@@ -334,3 +334,105 @@ func TestLegacyMigration(t *testing.T) {
 		t.Errorf("legacy todo task not found")
 	}
 }
+
+func TestImmutableTasks_AbortedAndDeleted(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_immutable.db")
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Aborted task cannot change status or be updated
+	task1, err := store.Add("Task 1", "Desc 1", nil, "medium")
+	if err != nil {
+		t.Fatalf("failed to add task 1: %v", err)
+	}
+	abortReason := "Requirements dropped"
+	if err := store.UpdateStatus(task1.ID, StatusAborted, &abortReason); err != nil {
+		t.Fatalf("failed to abort task 1: %v", err)
+	}
+
+	if err := store.CheckTaskMutable(task1.ID); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from CheckTaskMutable, got: %v", err)
+	}
+
+	// Attempt status changes on aborted task
+	for _, targetStatus := range []Status{StatusPending, StatusInProgress, StatusDone, StatusAborted} {
+		err := store.UpdateStatus(task1.ID, targetStatus, nil)
+		if !errors.Is(err, ErrTaskImmutable) {
+			t.Errorf("expected ErrTaskImmutable when changing aborted task to %s, got: %v", targetStatus, err)
+		}
+	}
+
+	// Attempt updates on aborted task
+	if err := store.Update(task1.ID, "New Title", "New Desc"); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from Update on aborted task, got: %v", err)
+	}
+	if err := store.UpdateTaskDetails(task1.ID, "New Title", "New Desc", nil, "high"); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from UpdateTaskDetails on aborted task, got: %v", err)
+	}
+	if err := store.UpdateDescription(task1.ID, "New Desc"); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from UpdateDescription on aborted task, got: %v", err)
+	}
+	if err := store.UpdatePriority(task1.ID, "urgent"); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from UpdatePriority on aborted task, got: %v", err)
+	}
+
+	// 2. Deleted task cannot change status or be updated
+	task2, err := store.Add("Task 2", "Desc 2", nil, "low")
+	if err != nil {
+		t.Fatalf("failed to add task 2: %v", err)
+	}
+	if err := store.Delete(task2.ID); err != nil {
+		t.Fatalf("failed to delete task 2: %v", err)
+	}
+
+	if err := store.CheckTaskMutable(task2.ID); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from CheckTaskMutable on deleted task, got: %v", err)
+	}
+
+	// Attempt status changes on deleted task
+	for _, targetStatus := range []Status{StatusPending, StatusInProgress, StatusDone, StatusAborted} {
+		err := store.UpdateStatus(task2.ID, targetStatus, nil)
+		if !errors.Is(err, ErrTaskImmutable) {
+			t.Errorf("expected ErrTaskImmutable when changing deleted task to %s, got: %v", targetStatus, err)
+		}
+	}
+
+	// Attempt updates on deleted task
+	if err := store.Update(task2.ID, "New Title", "New Desc"); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from Update on deleted task, got: %v", err)
+	}
+	if err := store.UpdateTaskDetails(task2.ID, "New Title", "New Desc", nil, "high"); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from UpdateTaskDetails on deleted task, got: %v", err)
+	}
+	if err := store.UpdateDescription(task2.ID, "New Desc"); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from UpdateDescription on deleted task, got: %v", err)
+	}
+	if err := store.UpdatePriority(task2.ID, "urgent"); !errors.Is(err, ErrTaskImmutable) {
+		t.Errorf("expected ErrTaskImmutable from UpdatePriority on deleted task, got: %v", err)
+	}
+
+	// 3. Non-existent task returns ErrTaskNotFound
+	nonExistentID := int64(99999)
+	if err := store.CheckTaskMutable(nonExistentID); !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("expected ErrTaskNotFound from CheckTaskMutable, got: %v", err)
+	}
+	if err := store.UpdateStatus(nonExistentID, StatusDone, nil); !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("expected ErrTaskNotFound from UpdateStatus, got: %v", err)
+	}
+	if err := store.Update(nonExistentID, "Title", "Desc"); !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("expected ErrTaskNotFound from Update, got: %v", err)
+	}
+	if err := store.UpdateTaskDetails(nonExistentID, "Title", "Desc", nil, "low"); !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("expected ErrTaskNotFound from UpdateTaskDetails, got: %v", err)
+	}
+	if err := store.UpdateDescription(nonExistentID, "Desc"); !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("expected ErrTaskNotFound from UpdateDescription, got: %v", err)
+	}
+	if err := store.UpdatePriority(nonExistentID, "high"); !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("expected ErrTaskNotFound from UpdatePriority, got: %v", err)
+	}
+}
