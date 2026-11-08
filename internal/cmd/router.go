@@ -318,6 +318,13 @@ func NewRootCommand() *Command {
 			Usage:       "task-cli project view <code|id> [-t]",
 			Run:         ProjectView,
 		},
+		&Command{
+			Name:        "update",
+			Aliases:     []string{"edit", "mod"},
+			Description: "Update project name and/or description",
+			Usage:       "task-cli project update <code|id> [--name <name>] [--desc <desc>]",
+			Run:         ProjectUpdate,
+		},
 	)
 
 	taskCmd := &Command{

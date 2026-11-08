@@ -3,10 +3,11 @@ package cmd
 // FlatAliases maps legacy flat command names and shortcuts to their hierarchical routes in Root.
 var FlatAliases = map[string][]string{
 	// Projects
-	"np":          {"project", "add"},
-	"project-add": {"project", "add"},
-	"lp":          {"project", "list"},
-	"projects":    {"project", "list"},
+	"np":             {"project", "add"},
+	"project-add":    {"project", "add"},
+	"lp":             {"project", "list"},
+	"projects":       {"project", "list"},
+	"project-update": {"project", "update"},
 
 	// Tasks
 	"add":             {"task", "add"},

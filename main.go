@@ -21,7 +21,7 @@ func printUsage() {
 	fmt.Println("Usage: task-cli [--db <path>] [-F <format>] <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
 	fmt.Println("  task [command]                        Manage tasks (subcommands: add, list, view, update, delete, status, prio, doc)")
-	fmt.Println("  project [command]                     Manage projects (subcommands: add, list, view)")
+	fmt.Println("  project [command]                     Manage projects (subcommands: add, list, view, update)")
 	fmt.Println("  task doc [command]                    Manage task documents (subcommands: add, list, remove)")
 	fmt.Println("  doc-add, attach <id> <path> [name]    Link a document to a task")
 	fmt.Println("  doc-list, docs <id>                   List documents linked to a task")

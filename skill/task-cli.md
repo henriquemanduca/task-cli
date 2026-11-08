@@ -33,6 +33,7 @@ task-cli project list -n        # no header row
 task-cli project list -d -t     # include description and creation date columns
 task-cli project view BACKLOG   # view project details (alias: show)
 task-cli project view BACKLOG -t # with timestamps
+task-cli project update BACKLOG --name "New Name" --desc "New description" # update project (aliases: edit, mod)
 task-cli np BACKLOG "Product Backlog" "Main project backlog"   # shorthand add
 task-cli lp                                                     # shorthand list
 ```

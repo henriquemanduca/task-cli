@@ -31,6 +31,7 @@ type CommandFunc func(ctx *Context, args []string) error
 var Registry = map[string]CommandFunc{
 	"np":              ProjectAdd,
 	"project-add":     ProjectAdd,
+	"project-update":  ProjectUpdate,
 	"lp":              ProjectList,
 	"projects":        ProjectList,
 	"add":             TaskAdd,

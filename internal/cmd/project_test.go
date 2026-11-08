@@ -212,3 +212,85 @@ func TestProjectHierarchicalRouting(t *testing.T) {
 	}
 }
 
+func TestProjectUpdate(t *testing.T) {
+	ctx, cleanup := setupTestContext(t)
+	defer cleanup()
+
+	// Setup initial project
+	_, err := ctx.Store.AddProject("PRJ", "Initial Name", "Initial Description")
+	if err != nil {
+		t.Fatalf("failed to add project: %v", err)
+	}
+
+	// 1. Missing target
+	err = ProjectUpdate(ctx, []string{})
+	if err == nil {
+		t.Fatal("expected error for missing args, got nil")
+	}
+
+	// 2. Non-existent target
+	err = ProjectUpdate(ctx, []string{"NONEXISTENT", "--name", "New Name"})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected 'not found' error, got %v", err)
+	}
+
+	// 3. Update name only by code
+	var out string
+	out, err = captureStdout(func() error {
+		return ProjectUpdate(ctx, []string{"PRJ", "--name", "Updated Name"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error updating project: %v", err)
+	}
+	if !strings.Contains(out, "Project 'PRJ' updated successfully") {
+		t.Fatalf("expected success message, got: %s", out)
+	}
+
+	p, err := ctx.Store.GetProjectByCode("PRJ")
+	if err != nil {
+		t.Fatalf("failed to get project: %v", err)
+	}
+	if p.Name != "Updated Name" || p.Description != "Initial Description" {
+		t.Fatalf("unexpected project data: %+v", p)
+	}
+
+	// 4. Update description only by ID
+	idStr := strconv.FormatInt(p.ID, 10)
+	out, err = captureStdout(func() error {
+		return ProjectUpdate(ctx, []string{idStr, "--desc", "Updated Description"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error updating project by id: %v", err)
+	}
+	if !strings.Contains(out, "Project 'PRJ' updated successfully") {
+		t.Fatalf("expected success message, got: %s", out)
+	}
+
+	p, err = ctx.Store.GetProjectByID(p.ID)
+	if err != nil {
+		t.Fatalf("failed to get project: %v", err)
+	}
+	if p.Name != "Updated Name" || p.Description != "Updated Description" {
+		t.Fatalf("unexpected project data: %+v", p)
+	}
+
+	// 5. Update via Root hierarchical router with alias and flags in various positions
+	out, err = captureStdout(func() error {
+		return Root.Execute(ctx, []string{"project", "mod", "--name", "Final Name", "PRJ", "--desc", "Final Description"})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error executing project update via router: %v", err)
+	}
+	if !strings.Contains(out, "Project 'PRJ' updated successfully") {
+		t.Fatalf("expected success message, got: %s", out)
+	}
+
+	p, err = ctx.Store.GetProjectByCode("PRJ")
+	if err != nil {
+		t.Fatalf("failed to get project: %v", err)
+	}
+	if p.Name != "Final Name" || p.Description != "Final Description" {
+		t.Fatalf("unexpected project data: %+v", p)
+	}
+}
+

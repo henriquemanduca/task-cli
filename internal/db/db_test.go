@@ -62,6 +62,21 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("expected ErrProjectNotFound for nonexistent ID, got %v", err)
 	}
 
+	// Update project
+	if err := store.UpdateProject(project.ID, "CLI Tools Updated", "Updated desc"); err != nil {
+		t.Fatalf("UpdateProject failed: %v", err)
+	}
+	updatedProj, err := store.GetProjectByID(project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectByID failed after update: %v", err)
+	}
+	if updatedProj.Name != "CLI Tools Updated" || updatedProj.Description != "Updated desc" {
+		t.Errorf("unexpected updated project data: %+v", updatedProj)
+	}
+	if err := store.UpdateProject(99999, "None", "None"); !errors.Is(err, ErrProjectNotFound) {
+		t.Errorf("expected ErrProjectNotFound for nonexistent ID update, got %v", err)
+	}
+
 	// 2. Add standalone task and project task with title & description
 	taskStandalone, err := store.Add("Standalone Title", "Standalone description", nil, "high")
 	if err != nil {

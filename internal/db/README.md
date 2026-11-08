@@ -20,6 +20,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:Store.ListProjects`
 - `db.go:Store.GetProjectByCode`
 - `db.go:Store.GetProjectByID`
+- `db.go:Store.UpdateProject`
 - `db.go:Store.Add`
 - `db.go:Store.List`
 - `db.go:Store.GetTaskByID`
@@ -65,6 +66,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:NewStore`: Creates directory path via `os.MkdirAll`, opens SQLite database file, configures `PRAGMA journal_mode=WAL` and `foreign_keys=ON`, executes DDL schema migrations, and updates legacy records.
 - `db.go:Store.Close`: Closes underlying SQLite database connection.
 - `db.go:Store.AddProject`: Inserts project record into SQLite `projects` table.
+- `db.go:Store.UpdateProject`: Updates project name, description, and updated_at in SQLite `projects` table.
 - `db.go:Store.Add`: Inserts task record into SQLite `tasks` table.
 - `db.go:Store.Update`, `db.go:Store.UpdateTaskDetails`, `db.go:Store.UpdateDescription`, `db.go:Store.UpdateStatus`, `db.go:Store.UpdatePriority`: Modifies task records in SQLite `tasks` table and updates `updated_at`.
 - `db.go:Store.Delete`: Performs soft delete by populating `deleted_at` and `updated_at` in SQLite `tasks` table.

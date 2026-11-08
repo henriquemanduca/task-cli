@@ -232,6 +232,24 @@ func (s *Store) GetProjectByID(id int64) (*Project, error) {
 	return &p, nil
 }
 
+// UpdateProject updates the name and description of an existing project by ID.
+func (s *Store) UpdateProject(id int64, name, description string) error {
+	now := time.Now().UTC()
+	query := `UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?`
+	res, err := s.db.Exec(query, name, description, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to update project: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrProjectNotFound
+	}
+	return nil
+}
+
 // Add creates a new task with a title and optional description.
 func (s *Store) Add(title, description string, projectID *int64, priority string) (*Task, error) {
 	now := time.Now().UTC()

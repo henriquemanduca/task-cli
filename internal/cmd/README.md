@@ -25,6 +25,7 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `project.go:ProjectAddAction`, `project.go:ProjectAddHandler`, `project.go:ProjectAdd`
 - `project.go:ProjectListAction`, `project.go:ProjectListHandler`, `project.go:ProjectList`
 - `project.go:ProjectViewAction`, `project.go:ProjectViewHandler`, `project.go:ProjectView`
+- `project.go:ProjectUpdateAction`, `project.go:ProjectUpdateHandler`, `project.go:ProjectUpdate`
 - `router.go:ErrUnknownCommand`, `router.go:Command`, `router.go:NewRootCommand`, `router.go:Root`
 - `task.go:TaskAddAction`, `task.go:TaskAddHandler`, `task.go:TaskAdd`
 - `task.go:TaskListAction`, `task.go:TaskListHandler`, `task.go:TaskList`
@@ -46,6 +47,7 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `io.go:ImportAction.Parse`: Input data must be non-empty JSON provided via file path positional argument or standard input.
 - `project.go:ProjectAddAction.Parse`: Requires at least 2 positional arguments: project code and name.
 - `project.go:ProjectViewAction.Parse`: Requires at least 1 positional argument for project code or `int64` ID.
+- `project.go:ProjectUpdateAction.Parse`: Requires at least 1 positional argument for project code or `int64` ID.
 - `task.go:TaskAddAction.Parse`: Requires at least 1 positional argument for task title.
 - `task.go:TaskListAction.Parse`: Valid task status filters are: `all`, `pending`, `in-progress`, `done`, `abort` (defaults to `pending`).
 - `task.go:TaskViewAction.Parse`, `task.go:TaskUpdateAction.Parse`, `task.go:TaskEditAction.Parse`, `task.go:TaskDeleteAction.Parse`: Require at least 1 positional argument parsed as an `int64` task ID.
@@ -62,6 +64,7 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `io.go:ImportAction.Execute`: Modifies database by inserting tasks, inserting/updating projects, and attaching documents via `Store.ImportData`.
 - `io.go:ImportAction.Format`: Writes import warnings to `os.Stderr` and result summary to output writer.
 - `project.go:ProjectAddAction.Execute`: Inserts project record into SQLite database via `Store.AddProject`.
+- `project.go:ProjectUpdateAction.Execute`: Updates project name and/or description in SQLite database via `Store.UpdateProject`.
 - `task.go:TaskAddAction.Execute`: Inserts task record into SQLite database via `Store.Add`.
 - `task.go:TaskUpdateAction.Execute`: Updates task metadata in SQLite database via `Store.UpdateTaskDetails`.
 - `task.go:TaskEditAction.Execute`: Creates temporary markdown file via `os.CreateTemp`, launches interactive editor process (`$EDITOR`, `$VISUAL`, or `nano`) attached to standard I/O, and updates task description in database via `Store.UpdateDescription`.

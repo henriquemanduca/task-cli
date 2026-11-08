@@ -274,3 +274,122 @@ var ProjectViewHandler = NewActionHandler(&ProjectViewAction{})
 func ProjectView(ctx *Context, args []string) error {
 	return ProjectViewHandler.Run(ctx, args)
 }
+
+// ProjectUpdateArgs represents the argument schema for updating a project.
+type ProjectUpdateArgs struct {
+	Target         string
+	Name           string
+	HasName        bool
+	Description    string
+	HasDescription bool
+}
+
+// ProjectUpdateResult holds the updated project.
+type ProjectUpdateResult struct {
+	Project *db.Project
+}
+
+// ProjectUpdateAction encapsulates schema parsing, execution, and output formatting for project updates.
+type ProjectUpdateAction struct{}
+
+// Parse parses flags and positional arguments for updating a project.
+func (a *ProjectUpdateAction) Parse(ctx *Context, args []string) (ProjectUpdateArgs, error) {
+	if len(args) < 1 {
+		return ProjectUpdateArgs{}, fmt.Errorf("project code or ID is required.\nUsage: task-cli project update <code|id> [--name <name>] [--desc <desc>]")
+	}
+
+	updateCmd := flag.NewFlagSet("project update", flag.ContinueOnError)
+	var name string
+	var desc string
+	updateCmd.StringVar(&name, "name", "", "New project name")
+	updateCmd.StringVar(&desc, "desc", "", "New project description")
+	updateCmd.StringVar(&desc, "description", "", "New project description")
+
+	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
+		"--name":        true,
+		"-name":         true,
+		"--desc":        true,
+		"-desc":         true,
+		"--description": true,
+		"-description":  true,
+	})
+
+	if err := updateCmd.Parse(flagArgs); err != nil {
+		return ProjectUpdateArgs{}, err
+	}
+
+	if len(posArgs) < 1 {
+		return ProjectUpdateArgs{}, fmt.Errorf("project code or ID is required.\nUsage: task-cli project update <code|id> [--name <name>] [--desc <desc>]")
+	}
+
+	var hasName, hasDesc bool
+	for _, arg := range flagArgs {
+		if arg == "--name" || arg == "-name" || strings.HasPrefix(arg, "--name=") || strings.HasPrefix(arg, "-name=") {
+			hasName = true
+		}
+		if arg == "--desc" || arg == "-desc" || strings.HasPrefix(arg, "--desc=") || strings.HasPrefix(arg, "-desc=") ||
+			arg == "--description" || arg == "-description" || strings.HasPrefix(arg, "--description=") || strings.HasPrefix(arg, "-description=") {
+			hasDesc = true
+		}
+	}
+
+	return ProjectUpdateArgs{
+		Target:         strings.TrimSpace(posArgs[0]),
+		Name:           name,
+		HasName:        hasName,
+		Description:    desc,
+		HasDescription: hasDesc,
+	}, nil
+}
+
+// Execute resolves and updates the project in the database.
+func (a *ProjectUpdateAction) Execute(ctx *Context, args ProjectUpdateArgs) (*ProjectUpdateResult, error) {
+	project, err := ctx.Store.GetProjectByCode(args.Target)
+	if err != nil && errors.Is(err, db.ErrProjectNotFound) {
+		if id, parseErr := strconv.ParseInt(args.Target, 10, 64); parseErr == nil {
+			project, err = ctx.Store.GetProjectByID(id)
+		}
+	}
+
+	if err != nil {
+		if errors.Is(err, db.ErrProjectNotFound) {
+			return nil, fmt.Errorf("project '%s' not found", args.Target)
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	newName := project.Name
+	if args.HasName {
+		newName = args.Name
+	}
+
+	newDesc := project.Description
+	if args.HasDescription {
+		newDesc = args.Description
+	}
+
+	if err := ctx.Store.UpdateProject(project.ID, newName, newDesc); err != nil {
+		return nil, fmt.Errorf("updating project: %w", err)
+	}
+
+	updatedProject, err := ctx.Store.GetProjectByID(project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("reloading project: %w", err)
+	}
+
+	return &ProjectUpdateResult{Project: updatedProject}, nil
+}
+
+// Format renders the update confirmation message.
+func (a *ProjectUpdateAction) Format(ctx *Context, w io.Writer, res *ProjectUpdateResult) error {
+	_, err := fmt.Fprintf(w, "Project '%s' updated successfully (ID: %d)\n", res.Project.Code, res.Project.ID)
+	return err
+}
+
+// ProjectUpdateHandler is the standardized handler instance for ProjectUpdateAction.
+var ProjectUpdateHandler = NewActionHandler(&ProjectUpdateAction{})
+
+// ProjectUpdate updates the name and description of an existing project.
+func ProjectUpdate(ctx *Context, args []string) error {
+	return ProjectUpdateHandler.Run(ctx, args)
+}
