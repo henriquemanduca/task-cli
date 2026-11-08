@@ -408,8 +408,9 @@ func (a *TaskViewAction) Format(ctx *Context, w io.Writer, res *TaskViewResult) 
 		proj = "-"
 	}
 
-	fmt.Fprintf(w, "Task: %04d - %s\n", t.ID, t.Title)
+	fmt.Fprintf(w, "Task: %04d\n", t.ID)
 	fmt.Fprintf(w, "Project: %s\n", proj)
+	fmt.Fprintf(w, "Title: %s\n", t.Title)
 	fmt.Fprintf(w, "Status: %s\n", t.Status)
 	fmt.Fprintf(w, "Priority: %s\n", t.Priority)
 	if res.ShowTime {

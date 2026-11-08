@@ -9,7 +9,6 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `alias.go:ExpandAliases`
 - `cmd.go:Context`
 - `cmd.go:CommandFunc`
-- `cmd.go:Registry`
 - `cmd.go:Execute`
 - `context.go:GlobalFlags`
 - `context.go:ParseGlobalFlags`

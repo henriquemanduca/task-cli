@@ -440,20 +440,6 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil err for unknown command, got %v", err)
 	}
-
-	// Test Execute with Registry fallback
-	Registry["test-custom-cmd"] = func(ctx *Context, args []string) error {
-		return nil
-	}
-	defer delete(Registry, "test-custom-cmd")
-
-	handled, err = Execute(nil, "test-custom-cmd", []string{})
-	if !handled {
-		t.Fatal("expected handled=true for registry fallback")
-	}
-	if err != nil {
-		t.Fatalf("unexpected error for registry fallback: %v", err)
-	}
 }
 
 func TestRouter_TaskDomainTree(t *testing.T) {

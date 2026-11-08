@@ -27,55 +27,7 @@ func (c *Context) OutWriter() io.Writer {
 // CommandFunc defines the function signature for subcommands.
 type CommandFunc func(ctx *Context, args []string) error
 
-// Registry maps command names and aliases to their corresponding handlers.
-var Registry = map[string]CommandFunc{
-	"np":              ProjectAdd,
-	"project-add":     ProjectAdd,
-	"project-update":  ProjectUpdate,
-	"lp":              ProjectList,
-	"projects":        ProjectList,
-	"add":             TaskAdd,
-	"list":            TaskList,
-	"ls":              TaskList,
-	"view":            TaskView,
-	"show":            TaskView,
-	"get":             TaskView,
-	"update":          TaskUpdate,
-	"mod":             TaskUpdate,
-	"edit":            TaskEdit,
-	"delete":          TaskDelete,
-	"del":             TaskDelete,
-	"rm":              TaskDelete,
-	"remove":          TaskDelete,
-	"status":          TaskStatus,
-	"set-status":      TaskStatus,
-	"task-status":     TaskStatus,
-	"prio":            TaskSetPriority,
-	"priority":        TaskSetPriority,
-	"set-prio":        TaskSetPriority,
-	"set-priority":    TaskSetPriority,
-	"set-pending":     TaskSetPending,
-	"pending":         TaskSetPending,
-	"set-in-progress": TaskSetInProgress,
-	"start":           TaskSetInProgress,
-	"set-done":        TaskSetDone,
-	"done":            TaskSetDone,
-	"set-abort":       TaskSetAbort,
-	"abort":           TaskSetAbort,
-	"doc-add":         DocAdd,
-	"attach":          DocAdd,
-	"doc-list":        DocList,
-	"docs":            DocList,
-	"doc-del":         DocDelete,
-	"doc-rm":          DocDelete,
-	"doc-remove":      DocDelete,
-	"export":          Export,
-	"exp":             Export,
-	"import":          Import,
-	"imp":             Import,
-}
-
-// Execute routes a command to its registered handler.
+// Execute routes a command to its registered handler via flat alias or hierarchical Root router.
 func Execute(ctx *Context, command string, args []string) (bool, error) {
 	if Root != nil {
 		if targetPath, ok := ResolveFlatAlias(command); ok {
@@ -88,9 +40,5 @@ func Execute(ctx *Context, command string, args []string) (bool, error) {
 		}
 	}
 
-	handler, ok := Registry[command]
-	if !ok {
-		return false, nil
-	}
-	return true, handler(ctx, args)
+	return false, nil
 }
