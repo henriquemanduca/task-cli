@@ -804,3 +804,75 @@ func TestLegacyDBMigration(t *testing.T) {
 		}
 	})
 }
+
+func TestTaskListOrderByProjectCode(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "order_test.db")
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	projZ, err := store.AddProject("ZETA", "Project Zeta", "")
+	if err != nil {
+		t.Fatalf("AddProject ZETA failed: %v", err)
+	}
+	projA, err := store.AddProject("ALPHA", "Project Alpha", "")
+	if err != nil {
+		t.Fatalf("AddProject ALPHA failed: %v", err)
+	}
+	projB, err := store.AddProject("BETA", "Project Beta", "")
+	if err != nil {
+		t.Fatalf("AddProject BETA failed: %v", err)
+	}
+
+	// 1. Task in ZETA
+	t1, err := store.Add("Task Zeta 1", "", &projZ.ID, "medium")
+	if err != nil {
+		t.Fatalf("Add task 1 failed: %v", err)
+	}
+	// 2. Standalone task without project
+	t2, err := store.Add("Task Standalone 1", "", nil, "medium")
+	if err != nil {
+		t.Fatalf("Add task 2 failed: %v", err)
+	}
+	// 3. Task in ALPHA
+	t3, err := store.Add("Task Alpha 1", "", &projA.ID, "medium")
+	if err != nil {
+		t.Fatalf("Add task 3 failed: %v", err)
+	}
+	// 4. Task in BETA
+	t4, err := store.Add("Task Beta 1", "", &projB.ID, "medium")
+	if err != nil {
+		t.Fatalf("Add task 4 failed: %v", err)
+	}
+	// 5. Another task in ALPHA
+	t5, err := store.Add("Task Alpha 2", "", &projA.ID, "medium")
+	if err != nil {
+		t.Fatalf("Add task 5 failed: %v", err)
+	}
+	// 6. Another standalone task
+	t6, err := store.Add("Task Standalone 2", "", nil, "medium")
+	if err != nil {
+		t.Fatalf("Add task 6 failed: %v", err)
+	}
+
+	tasks, err := store.List("", "")
+	if err != nil {
+		t.Fatalf("store.List failed: %v", err)
+	}
+
+	if len(tasks) != 6 {
+		t.Fatalf("expected 6 tasks, got %d", len(tasks))
+	}
+
+	expectedIDs := []int64{t2.ID, t6.ID, t3.ID, t5.ID, t4.ID, t1.ID}
+	for i, expectedID := range expectedIDs {
+		if tasks[i].ID != expectedID {
+			t.Errorf("at index %d: expected task ID %d, got %d (project %q)",
+				i, expectedID, tasks[i].ID, tasks[i].ProjectCode)
+		}
+	}
+}
+

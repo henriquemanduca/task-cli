@@ -317,7 +317,7 @@ func (s *Store) List(statusFilter, projectFilter string) ([]Task, error) {
 		}
 	}
 
-	query += ` ORDER BY t.id ASC`
+	query += ` ORDER BY p.code ASC, t.id ASC`
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {

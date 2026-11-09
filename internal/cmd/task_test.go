@@ -549,3 +549,45 @@ func TestImmutableTasksCmd_AbortedAndDeleted(t *testing.T) {
 	}
 }
 
+func TestTaskListOrderByProjectCode(t *testing.T) {
+	ctx, cleanup := setupTestContext(t)
+	defer cleanup()
+
+	if err := ProjectAdd(ctx, []string{"ZETA", "Project Zeta"}); err != nil {
+		t.Fatalf("failed to add project ZETA: %v", err)
+	}
+	if err := ProjectAdd(ctx, []string{"ALPHA", "Project Alpha"}); err != nil {
+		t.Fatalf("failed to add project ALPHA: %v", err)
+	}
+
+	if err := TaskAdd(ctx, []string{"-p", "1", "Task in ZETA", "Details"}); err != nil {
+		t.Fatalf("failed to add task in ZETA: %v", err)
+	}
+	if err := TaskAdd(ctx, []string{"-p", "", "Task standalone", "Details"}); err != nil {
+		t.Fatalf("failed to add standalone task: %v", err)
+	}
+	if err := TaskAdd(ctx, []string{"-p", "2", "Task in ALPHA", "Details"}); err != nil {
+		t.Fatalf("failed to add task in ALPHA: %v", err)
+	}
+
+	out, err := captureStdout(func() error {
+		return TaskList(ctx, []string{"-p", ""})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error listing tasks: %v", err)
+	}
+
+	idxStandalone := strings.Index(out, "Task standalone")
+	idxAlpha := strings.Index(out, "Task in ALPHA")
+	idxZeta := strings.Index(out, "Task in ZETA")
+
+	if idxStandalone == -1 || idxAlpha == -1 || idxZeta == -1 {
+		t.Fatalf("expected all tasks in output, got:\n%s", out)
+	}
+
+	if !(idxStandalone < idxAlpha && idxAlpha < idxZeta) {
+		t.Errorf("expected order standalone < ALPHA < ZETA, got output:\n%s", out)
+	}
+}
+
+
