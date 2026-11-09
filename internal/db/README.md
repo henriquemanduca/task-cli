@@ -36,6 +36,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:Store.ListDocuments`
 - `db.go:Store.GetDocumentByID`
 - `db.go:Store.DeleteDocument`
+- `db.go:Store.ListAllDocumentPaths`
 - `transfer.go:CurrentSchemaVersion`
 - `transfer.go:ErrInvalidSchemaVersion`
 - `transfer.go:ErrInvalidStatus`
@@ -65,8 +66,8 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `transfer.go:opts.Strict`: When strict mode is enabled, enforces non-empty task title, valid status, valid priority, and non-empty project code during import.
 
 ## Side Effects
-- `db.go:DefaultDBPath`: Reads environment variable `TASK_CLI_DB` and queries user home directory via `os.UserHomeDir`.
-- `db.go:NewStore`: Creates directory path via `os.MkdirAll`, opens SQLite database file, configures `PRAGMA journal_mode=WAL` and `foreign_keys=ON`, executes DDL schema migrations, and updates legacy records.
+- `db.go:DefaultDBPath`: Reads environment variable `TASK_CLI_DB` if set, otherwise delegates to `filestore.DefaultDBPath()`.
+- `db.go:NewStore`: Coordinates legacy SQLite migration via `filestore.CopyLegacyDB` and PRAGMA integrity check when applicable, creates directory path via `os.MkdirAll`, opens SQLite database file, configures `PRAGMA journal_mode=WAL` and `foreign_keys=ON`, executes DDL schema migrations, and updates legacy records.
 - `db.go:Store.Close`: Closes underlying SQLite database connection.
 - `db.go:Store.AddProject`: Inserts project record into SQLite `projects` table.
 - `db.go:Store.UpdateProject`: Updates project name, description, and updated_at in SQLite `projects` table.
@@ -75,6 +76,7 @@ Package `db` provides pure-Go SQLite storage and schema management for tasks, pr
 - `db.go:Store.Delete`: Performs soft delete by populating `deleted_at`, updating status to `deleted`, and updating `updated_at` in SQLite `tasks` table.
 - `db.go:Store.AddDocument`: Inserts document path record into SQLite `documents` table.
 - `db.go:Store.DeleteDocument`: Deletes document record from SQLite `documents` table.
+- `db.go:Store.ListAllDocumentPaths`: Queries active document paths from SQLite `documents` table joined with non-deleted `tasks`.
 - `transfer.go:Store.ImportData`: Executes transaction mutating `projects`, `tasks`, and `documents` tables, rolling back on error or if `opts.DryRun` is true.
 
 ## Verification

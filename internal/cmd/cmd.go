@@ -14,6 +14,7 @@ type Context struct {
 	DBPath string
 	Format string
 	Out    io.Writer
+	Stderr io.Writer
 	Config *config.Config
 }
 
@@ -32,6 +33,15 @@ func (c *Context) OutWriter() io.Writer {
 		return c.Out
 	}
 	return os.Stdout
+}
+
+// ErrWriter returns the configured error writer for the context,
+// or defaults to os.Stderr if unset.
+func (c *Context) ErrWriter() io.Writer {
+	if c != nil && c.Stderr != nil {
+		return c.Stderr
+	}
+	return os.Stderr
 }
 
 // CommandFunc defines the function signature for subcommands.

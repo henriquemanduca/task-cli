@@ -336,14 +336,14 @@ func NewRootCommand() *Command {
 	docCmd := &Command{
 		Name:        "doc",
 		Aliases:     []string{"docs", "d"},
-		Description: "Manage task document attachments (add, list, remove)",
+		Description: "Manage task document attachments (add, list, remove, open, prune)",
 	}
 	docCmd.AddCommand(
 		&Command{
 			Name:        "add",
 			Aliases:     []string{"attach"},
 			Description: "Link a document to a task",
-			Usage:       "task-cli task doc add <task_id> <file_path> [name] [--type <type>]",
+			Usage:       "task-cli task doc add <task_id> <file_path> [name] [--type <type>] [--copy] [--link]",
 			Run:         DocAdd,
 		},
 		&Command{
@@ -359,6 +359,18 @@ func NewRootCommand() *Command {
 			Description: "Remove a linked document by ID",
 			Usage:       "task-cli task doc remove <doc_id>",
 			Run:         DocDelete,
+		},
+		&Command{
+			Name:        "open",
+			Description: "Open task attachment directory or reveal document in file manager",
+			Usage:       "task-cli task doc open <task_id> [--doc <doc_id>]",
+			Run:         DocOpen,
+		},
+		&Command{
+			Name:        "prune",
+			Description: "Audit and clean orphaned attachment files",
+			Usage:       "task-cli task doc prune [--dry-run]",
+			Run:         DocPrune,
 		},
 	)
 
@@ -449,9 +461,51 @@ func NewRootCommand() *Command {
 		},
 	)
 
+	rootDocCmd := &Command{
+		Name:        "doc",
+		Aliases:     []string{"d"},
+		Description: "Manage task document attachments (add, list, remove, open, prune)",
+	}
+	rootDocCmd.AddCommand(
+		&Command{
+			Name:        "add",
+			Aliases:     []string{"attach"},
+			Description: "Link a document to a task",
+			Usage:       "task-cli doc add <task_id> <file_path> [name] [--type <type>] [--copy] [--link]",
+			Run:         DocAdd,
+		},
+		&Command{
+			Name:        "list",
+			Aliases:     []string{"ls"},
+			Description: "List documents linked to a task",
+			Usage:       "task-cli doc list <task_id>",
+			Run:         DocList,
+		},
+		&Command{
+			Name:        "remove",
+			Aliases:     []string{"rm", "del", "delete"},
+			Description: "Remove a linked document by ID",
+			Usage:       "task-cli doc remove <doc_id>",
+			Run:         DocDelete,
+		},
+		&Command{
+			Name:        "open",
+			Description: "Open task attachment directory or reveal document in file manager",
+			Usage:       "task-cli doc open <task_id> [--doc <doc_id>]",
+			Run:         DocOpen,
+		},
+		&Command{
+			Name:        "prune",
+			Description: "Audit and clean orphaned attachment files",
+			Usage:       "task-cli doc prune [--dry-run]",
+			Run:         DocPrune,
+		},
+	)
+
 	root.AddCommand(
 		projectCmd,
 		taskCmd,
+		rootDocCmd,
 		&Command{
 			Name:        "doc-add",
 			Aliases:     []string{"attach"},
@@ -469,6 +523,16 @@ func NewRootCommand() *Command {
 			Aliases:     []string{"doc-rm", "doc-remove"},
 			Description: "Remove a linked document by ID",
 			Run:         DocDelete,
+		},
+		&Command{
+			Name:        "doc-open",
+			Description: "Open task attachment directory or reveal document",
+			Run:         DocOpen,
+		},
+		&Command{
+			Name:        "doc-prune",
+			Description: "Audit and clean orphaned attachment files",
+			Run:         DocPrune,
 		},
 		&Command{
 			Name:        "export",

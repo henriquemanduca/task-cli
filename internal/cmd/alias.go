@@ -49,6 +49,8 @@ var FlatAliases = map[string][]string{
 	"doc-del":    {"task", "doc", "remove"},
 	"doc-rm":     {"task", "doc", "remove"},
 	"doc-remove": {"task", "doc", "remove"},
+	"doc-open":   {"doc", "open"},
+	"doc-prune":  {"doc", "prune"},
 
 	// I/O
 	"export": {"export"},

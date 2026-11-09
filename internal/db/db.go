@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"task-cli/internal/filestore"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -67,21 +69,22 @@ type Store struct {
 	db *sql.DB
 }
 
-// DefaultDBPath returns the default SQLite database path (~/.task-cli.db).
+// DefaultDBPath returns the canonical path to the SQLite database.
+// It prioritizes the TASK_CLI_DB environment variable override (if set and non-empty),
+// and otherwise delegates to filestore.DefaultDBPath().
 func DefaultDBPath() (string, error) {
 	if envPath := os.Getenv("TASK_CLI_DB"); envPath != "" {
 		return envPath, nil
 	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "tasks.db", nil
-	}
-	return filepath.Join(home, ".task-cli.db"), nil
+	return filestore.DefaultDBPath()
 }
 
 // NewStore opens or creates the SQLite database and initializes the schema.
 func NewStore(dbPath string) (*Store, error) {
+	if err := maybeMigrateLegacyDB(dbPath); err != nil {
+		return nil, err
+	}
+
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
@@ -582,4 +585,108 @@ func (s *Store) DeleteDocument(id int64) error {
 		return ErrDocumentNotFound
 	}
 	return nil
+}
+
+// ListAllDocumentPaths returns all file paths of active documents belonging to non-deleted tasks.
+func (s *Store) ListAllDocumentPaths() ([]string, error) {
+	query := `SELECT d.file_path FROM documents d JOIN tasks t ON d.task_id = t.id WHERE t.deleted_at IS NULL AND t.status != 'deleted' ORDER BY d.id ASC`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query document paths: %w", err)
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, fmt.Errorf("failed to scan document path: %w", err)
+		}
+		path = strings.TrimSpace(path)
+		if path != "" {
+			paths = append(paths, path)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed during document paths iteration: %w", err)
+	}
+	return paths, nil
+}
+
+func maybeMigrateLegacyDB(dbPath string) error {
+	defaultPath, err := filestore.DefaultDBPath()
+	if err != nil {
+		return nil
+	}
+
+	cleanDBPath := filepath.Clean(dbPath)
+	cleanDefault := filepath.Clean(defaultPath)
+	if cleanDBPath != cleanDefault {
+		return nil
+	}
+
+	if _, err := os.Stat(cleanDBPath); err == nil || !os.IsNotExist(err) {
+		return nil
+	}
+
+	legacyPath, err := filestore.LegacyDBPath()
+	if err != nil {
+		return nil
+	}
+	legacyPath = filepath.Clean(legacyPath)
+	if legacyPath == cleanDBPath {
+		return nil
+	}
+
+	if _, err := os.Stat(legacyPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to stat legacy database: %w", err)
+	}
+
+	return migrateLegacyDB(legacyPath, cleanDBPath)
+}
+
+func migrateLegacyDB(legacyPath, dbPath string) error {
+	if err := filestore.CopyLegacyDB(legacyPath, dbPath); err != nil {
+		cleanCorruptCopy(dbPath)
+		return fmt.Errorf("failed to copy legacy database: %w", err)
+	}
+
+	checkDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		cleanCorruptCopy(dbPath)
+		return fmt.Errorf("failed to open migrated database for validation: %w", err)
+	}
+
+	var checkResult string
+	queryErr := checkDB.QueryRow(`PRAGMA quick_check;`).Scan(&checkResult)
+	closeErr := checkDB.Close()
+
+	if queryErr != nil {
+		cleanCorruptCopy(dbPath)
+		return fmt.Errorf("failed to validate migrated database: %w", queryErr)
+	}
+	if closeErr != nil {
+		cleanCorruptCopy(dbPath)
+		return fmt.Errorf("failed to close database after validation: %w", closeErr)
+	}
+	if checkResult != "ok" {
+		cleanCorruptCopy(dbPath)
+		return fmt.Errorf("migrated database integrity check failed: %s", checkResult)
+	}
+
+	if err := filestore.FinalizeLegacyDBMigration(legacyPath); err != nil {
+		return fmt.Errorf("failed to finalize legacy migration: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Migrated legacy database from %s to %s (original renamed to .migrated)\n", legacyPath, dbPath)
+	return nil
+}
+
+func cleanCorruptCopy(dbPath string) {
+	_ = os.Remove(dbPath)
+	_ = os.Remove(dbPath + "-wal")
+	_ = os.Remove(dbPath + "-shm")
 }

@@ -17,18 +17,19 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 
 ## Architecture
 
-- `main.go` — global `--db`/`--version` flags, usage text, dispatch.
+- `main.go` — global `--version` flag, usage text, dispatch; `--db` and `TASK_CLI_DB` are evaluated at runtime (in `cmd.ResolveContext`) for testing/internal use but hidden from public CLI help (`printUsage`).
 - `internal/config/config.go` — discovers the nearest `.taskcli` (walking up to `$HOME`) and parses `.env`-style workspace defaults (currently `PROJECT_CODE`).
 - `internal/cmd/` — hierarchical command routing via `Root` in `router.go`; `task.go`, `project.go`, `doc.go`, and `io.go` contain handlers.
-- `internal/cmd/alias.go` — flat aliases table (`FlatAliases`) resolving legacy commands (e.g. `lp`, `np`, `add`, `done`, `attach`) to hierarchical routes for backwards compatibility.
-- `internal/db/db.go` — SQLite store, schema, CRUD; `internal/db/transfer.go` — JSON import/export.
+- `internal/cmd/alias.go` — flat aliases table (`FlatAliases`) resolving legacy commands (e.g. `lp`, `np`, `add`, `done`, `attach`, `doc-open`, `doc-prune`) to hierarchical routes for backwards compatibility.
+- `internal/filestore/` — platform-standard data root resolution, managed attachment copying (with CoW reflink and 100MB threshold), collision-free hash suffixing, directory opening (`xdg-open`/`open`/`explorer.exe`), and orphaned attachment pruning.
+- `internal/db/db.go` — SQLite store, schema, CRUD, legacy database migration; `internal/db/transfer.go` — JSON import/export.
 - Adding a command requires a handler `func(*cmd.Context, []string) error`, registration in `cmd.Root` (`internal/cmd/router.go`), and updates to `README.md`, `main.go:printUsage`, and `skill/task-cli.md` (these are separate and drift easily).
 
 ## CLI gotchas
 
 - Workspace defaults live in `.taskcli` (`.env`-style, nearest file from cwd up to `$HOME`). `PROJECT_CODE` makes `task add` link to that project and `task list` filter by it; an explicit `-p` overrides it, and `-p ""` disables it for that invocation. `version`/`help` skip config loading.
-- Global `--db` and `-F/--format` are transversal flags and can appear anywhere before, between, or after subcommands (e.g. `task-cli --db /tmp/x.db task list` or `task-cli task list --db /tmp/x.db -F table`).
-- Default DB is `~/.task-cli.db`; override with `TASK_CLI_DB` or `--db`. Always use a temp DB when manually exercising commands.
+- Global `-F/--format` is a transversal flag and can appear anywhere before, between, or after subcommands. `--db` is also transversal but hidden from public usage; use `--db` or `TASK_CLI_DB` for isolated tests. Always use a temp DB when manually exercising commands.
+- Default database is `<data_root>/task-cli.db` based on platform standards (`$XDG_DATA_HOME/task-cli` or `~/.local/share/task-cli` on Linux/BSD, `~/Library/Application Support/task-cli` on macOS, `%LOCALAPPDATA%\task-cli` on Windows). On first run, legacy `~/.task-cli.db` is safely migrated via stream copy with fsync, verified with `PRAGMA quick_check;`, and renamed to `~/.task-cli.db.migrated`.
 - Each command parses its own `flag.FlagSet`. `splitFlagsAndPosArgs` lets flags appear before or after positionals, but every value-taking flag must be listed in that command's `valueFlags` map or its value becomes a positional argument.
 - Project filters: `add` and `update` link/move tasks using project ID (`-p/--proj/--project <id>`); `list` filters by project code (`-p/--project <code>`); `export` accepts `-f/--filter/--project/--proj` but not `-p` (README's `export -p ...` example is wrong).
 - Statuses are `pending`, `in-progress`, `done`, `aborted` (with `abort` accepted as alias); `deleted` is set on soft delete; priorities are `low`, `medium`, `high`, `urgent`. `list` defaults to pending; `-a/--all/all` shows everything.
@@ -38,9 +39,11 @@ Single-binary Go CLI for task management backed by SQLite. No server, frontend, 
 
 ## Storage and import/export
 
-- `db.NewStore` creates the schema idempotently and runs ad-hoc legacy migrations (for example `todo` → `pending` and `abort` → `aborted`); there is no migration framework.
+- `db.NewStore` creates the schema idempotently, performs legacy database migration (`~/.task-cli.db` -> `<data_root>/task-cli.db`), and runs ad-hoc legacy migrations (for example `todo` → `pending` and `abort` → `aborted`); there is no migration framework.
 - Keep the SQLite driver `modernc.org/sqlite` (pure Go). Do not switch to a CGO driver; static `CGO_ENABLED=0` builds are a project requirement.
-- `attach` requires the file to exist and stores only its absolute path; it does not copy the document into the database.
+- Centralized attachment storage: attached files are duplicated into `<data_root>/attachments/<task_id>/<stem>_<hash>.<ext>` via `internal/filestore` (attempting CoW reflink before streaming `io.Copy`). Files > 100MB link by reference by default unless `--copy` is passed; `--link` forces linking by reference without copying. If SQLite insertion fails, the newly copied file is rolled back.
+- Attachment retention: deleting tasks or removing attachment records (`task doc remove`) preserves physical files on disk. `task doc prune [--dry-run]` explicitly audits and cleans orphaned files and removes empty task folders.
+- Native directory opening: `task doc open <task_id>` and `task doc open --doc <doc_id>` launch the desktop file manager (`xdg-open`, `open`, `explorer.exe`), or print the path to stdout in headless or SSH environments.
 - JSON transfer schema is versioned by `db.CurrentSchemaVersion` (currently 1); import rejects other versions.
 - Import dedupes projects by case-insensitive code, always inserts tasks as new rows, and is transactional (dry-run rolls back). `--overwrite` only updates project metadata; invalid rows are skipped with warnings unless `--strict`.
 

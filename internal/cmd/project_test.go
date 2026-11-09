@@ -17,6 +17,10 @@ func setupTestContext(t *testing.T) (*Context, func()) {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 
+	t.Setenv("XDG_DATA_HOME", tempDir)
+	t.Setenv("HOME", tempDir)
+	t.Setenv("LOCALAPPDATA", tempDir)
+
 	dbPath := filepath.Join(tempDir, "test_cmd.db")
 	store, err := db.NewStore(dbPath)
 	if err != nil {
@@ -24,7 +28,7 @@ func setupTestContext(t *testing.T) (*Context, func()) {
 		t.Fatalf("failed to create test store: %v", err)
 	}
 
-	ctx := &Context{Store: store}
+	ctx := &Context{Store: store, DBPath: dbPath}
 	cleanup := func() {
 		store.Close()
 		os.RemoveAll(tempDir)

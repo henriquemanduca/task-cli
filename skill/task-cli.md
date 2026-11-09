@@ -15,13 +15,16 @@ Single-binary CLI task manager written in Go with embedded SQLite storage
 (pure Go driver, static binary, no server). Use the installed `task-cli`
 binary, or `./dist/task-cli` from a source checkout (`make build`).
 
-## Database
+## Storage & Platform Data Roots
 
-- Default DB: `~/.task-cli.db`. Override with `TASK_CLI_DB` env var or `--db`.
-- Global flags `--db` and `-F/--format` are transversal and can appear anywhere
-  before, between, or after subcommands: `task-cli --db /tmp/x.db task list` or
-  `task-cli task list --db /tmp/x.db -F table`.
-- Use a throwaway DB (`--db /tmp/...`) when testing or demonstrating commands.
+- Standard data directories (`<data_root>`):
+  - Linux/BSD: `$XDG_DATA_HOME/task-cli` (default: `~/.local/share/task-cli`)
+  - macOS: `~/Library/Application Support/task-cli`
+  - Windows: `%LOCALAPPDATA%\task-cli`
+- Primary DB: `<data_root>/task-cli.db`.
+- Legacy migration: on first run, `~/.task-cli.db` is safely migrated to `<data_root>/task-cli.db` and renamed to `~/.task-cli.db.migrated`.
+- Testing override: `TASK_CLI_DB` env var or `--db <path>` overrides DB location (use throwaway DB `--db /tmp/...` when testing or demonstrating commands).
+- Global format flag `-F/--format` is transversal and can appear anywhere: `task-cli task list -F table`.
 
 ## Workspace config (`.taskcli`)
 
@@ -95,13 +98,21 @@ task-cli task delete 1          # soft delete (sets deleted_at and status 'delet
 
 ## Document attachments
 
-`attach` stores only the file's absolute path; it does not copy the document.
+`task doc add` duplicates the document into centralized storage (`<data_root>/attachments/<task_id>/<stem>_<hash>.<ext>`) with a short 8-character SHA-256 content-hash suffix. Files over 100MB are linked by reference without copying unless `--copy` is explicitly passed. Use `--link` to intentionally link by reference without copying.
+
+In headless/SSH environments without GUI, `task doc open` cleanly outputs the resolved path to stdout. Soft-deleting tasks or removing attachments retains physical files on disk; run `task doc prune` to audit and clean orphaned files.
 
 ```bash
-task-cli task doc add 1 /path/to/spec.pdf              # alias: attach, doc-add
+task-cli task doc add 1 /path/to/spec.pdf              # alias: attach, doc-add (copies to attachments/1/)
+task-cli task doc add 1 /path/to/spec.pdf --link       # link by reference without copying
+task-cli task doc add 1 /path/to/large.iso --copy      # force copy even if > 100MB
 task-cli task doc add 1 ./notes.txt "Meeting Notes"
 task-cli task doc list 1                              # alias: docs, doc-list, ls
 task-cli task doc remove 1                            # alias: doc-del, doc-remove, del, rm
+task-cli task doc open 1                              # open task attachment directory (alias: doc-open)
+task-cli task doc open --doc 1                        # reveal document in file manager
+task-cli task doc prune --dry-run                     # preview orphan attachments to delete (alias: doc-prune)
+task-cli task doc prune                               # delete orphan attachments and empty directories
 ```
 
 ## Export & Import (JSON)

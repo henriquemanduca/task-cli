@@ -18,6 +18,8 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 - `doc.go:DocAddAction`, `doc.go:DocAddHandler`, `doc.go:DocAdd`
 - `doc.go:DocListAction`, `doc.go:DocListHandler`, `doc.go:DocList`
 - `doc.go:DocDeleteAction`, `doc.go:DocDeleteHandler`, `doc.go:DocDelete`
+- `doc.go:DocOpenAction`, `doc.go:DocOpenHandler`, `doc.go:DocOpen`
+- `doc.go:DocPruneAction`, `doc.go:DocPruneHandler`, `doc.go:DocPrune`
 - `format.go:FormatTSV`, `format.go:FormatTable`
 - `handler.go:Handler`, `handler.go:HandlerFunc`, `handler.go:Action`, `handler.go:ActionHandler`, `handler.go:NewActionHandler`
 - `io.go:ExportAction`, `io.go:ExportHandler`, `io.go:Export`
@@ -41,8 +43,12 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 ## Invariants
 - `doc.go:DocAddAction.Parse`: Requires at least 2 positional arguments (task ID and file path).
 - `doc.go:DocAddAction.Parse`: Document file path must resolve to an existing accessible file via `os.Stat`.
+- `doc.go:DocAddAction.Parse`: Accepts optional `--copy` and `--link` boolean flags (mutually exclusive).
 - `doc.go:DocListAction.Parse`: Requires at least 1 positional argument parsed as an `int64` task ID.
 - `doc.go:DocDeleteAction.Parse`: Requires at least 1 positional argument parsed as an `int64` document ID.
+- `doc.go:DocOpenAction.Parse`: Requires at least 1 positional argument parsed as an `int64` task ID, or `--doc` flag parsed as an `int64` document ID (mutually exclusive).
+- `doc.go:DocOpenAction.Execute`: Rejects non-existent or soft-deleted tasks/documents, returning an explanatory user error.
+- `doc.go:DocPruneAction.Parse`: Accepts optional `--dry-run` (`-n`) boolean flag.
 - `format.go:validateFormat`: Output formats are strictly restricted to `tsv` and `table` (defaults to `tsv` when empty).
 - `io.go:ImportAction.Parse`: Input data must be non-empty JSON provided via file path positional argument or standard input.
 - `project.go:ProjectAddAction.Parse`: Requires at least 2 positional arguments: project code and name.
@@ -60,8 +66,10 @@ Package `cmd` implements the command-line interface, hierarchical router, transv
 
 ## Side Effects
 - `context.go:ResolveContext`, `context.go:ResolveStore`: Reads the nearest `.taskcli` via `config.LoadFromDir` (except for `version`/`help`), then opens or initializes the SQLite database connection on disk via `db.NewStore` and returns a cleanup callback.
-- `doc.go:DocAddAction.Execute`: Inserts document record linked to a task in the SQLite database via `Store.AddDocument`.
+- `doc.go:DocAddAction.Execute`: Duplicates document file into `<data_root>/attachments/<task_id>/<stem>_<hash>.<ext>` via `filestore.SaveAttachment` (unless `--link` is specified or file exceeds 100MB without `--copy`), inserts record in SQLite via `Store.AddDocument`, and automatically deletes the newly created copy on DB insertion failure (rollback).
 - `doc.go:DocDeleteAction.Execute`: Deletes document record from SQLite database via `Store.DeleteDocument`.
+- `doc.go:DocOpenAction.Execute`: Creates task directory via `os.MkdirAll` if missing; launches system file manager via `filestore.OpenFile` / `filestore.OpenFolder` or prints fallback path.
+- `doc.go:DocPruneAction.Execute`: Deletes orphaned attachment files from disk and removes empty task folders via `filestore.PruneAttachments` (unless in dry-run mode).
 - `io.go:ExportAction.Execute`: Writes exported JSON data to disk via `os.WriteFile` if `-o`/`--out` flag is provided.
 - `io.go:ImportAction.Parse`: Reads file data from disk via `os.ReadFile` or standard input via `io.ReadAll`.
 - `io.go:ImportAction.Execute`: Modifies database by inserting tasks, inserting/updating projects, and attaching documents via `Store.ImportData`.

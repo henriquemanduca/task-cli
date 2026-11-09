@@ -417,7 +417,7 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 	if taskNode.FindSubcommand("docs") == nil || taskNode.FindSubcommand("d") == nil {
 		t.Errorf("expected 'docs' and 'd' aliases for 'doc' under task")
 	}
-	for _, sub := range []string{"add", "list", "remove"} {
+	for _, sub := range []string{"add", "list", "remove", "open", "prune"} {
 		if docNode.FindSubcommand(sub) == nil {
 			t.Errorf("expected subcommand %q under 'task doc'", sub)
 		}
