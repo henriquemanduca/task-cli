@@ -56,6 +56,9 @@ func TestTaskListTableFormat(t *testing.T) {
 	if !strings.Contains(out, "First Task") || !strings.Contains(out, "Second Task") {
 		t.Errorf("expected task titles in table output, got:\n%s", out)
 	}
+	if !strings.Contains(out, "0001") || !strings.Contains(out, "0002") {
+		t.Errorf("expected 4-digit formatted task IDs in table output, got:\n%s", out)
+	}
 
 	// 2. Test table format with no-header
 	outNoHeader, err := captureStdout(func() error {

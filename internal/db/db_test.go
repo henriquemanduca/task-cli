@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -148,6 +149,15 @@ func TestStoreOperations(t *testing.T) {
 	}
 	if len(projectTasks) != 1 || projectTasks[0].ProjectCode != "CLI" {
 		t.Fatalf("expected 1 task in project CLI, got %+v", projectTasks)
+	}
+
+	// List filtered by project ID
+	projectTasksByID, err := store.List("", fmt.Sprintf("%d", project.ID))
+	if err != nil {
+		t.Fatalf("List by project ID failed: %v", err)
+	}
+	if len(projectTasksByID) != 1 || projectTasksByID[0].ProjectCode != "CLI" {
+		t.Fatalf("expected 1 task in project CLI by ID, got %+v", projectTasksByID)
 	}
 
 	// 5. Update status with abort reason

@@ -76,10 +76,14 @@ func TestTaskCommands(t *testing.T) {
 		t.Fatal("expected error when passing -d to TaskList, got nil")
 	}
 
-	// List tasks filtered by project via "list -p"
+	// List tasks filtered by project via "list -p" (by code and by ID)
 	err = TaskList(ctx, []string{"-p", "PROJ"})
 	if err != nil {
 		t.Fatalf("unexpected error listing tasks filtered by project -p: %v", err)
+	}
+	err = TaskList(ctx, []string{"-p", "1"})
+	if err != nil {
+		t.Fatalf("unexpected error listing tasks filtered by project -p ID: %v", err)
 	}
 
 	// List tasks filtered by status and project: "list pending -p PROJ"

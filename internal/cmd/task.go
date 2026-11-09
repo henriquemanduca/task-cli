@@ -355,7 +355,7 @@ func (a *TaskListAction) Format(ctx *Context, w io.Writer, res *TaskListResult) 
 		}
 
 		row := []string{
-			fmt.Sprintf("%d", t.ID),
+			fmt.Sprintf("%04d", t.ID),
 			proj,
 			string(t.Status),
 			t.Priority,

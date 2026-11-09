@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -286,8 +287,9 @@ func (s *Store) Add(title, description string, projectID *int64, priority string
 	}, nil
 }
 
-// List returns active tasks (soft deleted tasks excluded), with optional status and project code filters.
-func (s *Store) List(statusFilter, projectCodeFilter string) ([]Task, error) {
+// List returns active tasks (soft deleted tasks excluded), with optional status and project filters.
+// projectFilter matches either project ID (if numeric) or project code (case-insensitive).
+func (s *Store) List(statusFilter, projectFilter string) ([]Task, error) {
 	query := `SELECT t.id, t.project_id, COALESCE(p.code, ''), t.title, COALESCE(t.description, ''),
 	                 t.status, t.priority, t.abort_reason, t.created_at, t.updated_at, t.deleted_at
 	          FROM tasks t
@@ -304,10 +306,15 @@ func (s *Store) List(statusFilter, projectCodeFilter string) ([]Task, error) {
 		args = append(args, sf)
 	}
 
-	if projectCodeFilter != "" {
-		cleanProj := strings.Trim(projectCodeFilter, ", ")
-		query += ` AND p.code = ? COLLATE NOCASE`
-		args = append(args, cleanProj)
+	if projectFilter != "" {
+		cleanProj := strings.Trim(projectFilter, ", ")
+		if projID, err := strconv.ParseInt(cleanProj, 10, 64); err == nil {
+			query += ` AND (p.id = ? OR p.code = ? COLLATE NOCASE)`
+			args = append(args, projID, cleanProj)
+		} else {
+			query += ` AND p.code = ? COLLATE NOCASE`
+			args = append(args, cleanProj)
+		}
 	}
 
 	query += ` ORDER BY t.id ASC`

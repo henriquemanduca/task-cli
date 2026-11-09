@@ -24,7 +24,7 @@ binary, or `./dist/task-cli` from a source checkout (`make build`).
 - Primary DB: `<data_root>/task-cli.db`.
 - Legacy migration: on first run, `~/.task-cli.db` is safely migrated to `<data_root>/task-cli.db` and renamed to `~/.task-cli.db.migrated`.
 - Testing override: `TASK_CLI_DB` env var or `--db <path>` overrides DB location (use throwaway DB `--db /tmp/...` when testing or demonstrating commands).
-- Global format flag `-F/--format` is transversal and can appear anywhere: `task-cli task list -F table`.
+- Global format flag `-F/--format` is transversal and can appear anywhere: `task-cli task list`.
 
 ## Workspace config (`.taskcli`)
 
@@ -50,10 +50,9 @@ PROJECT_CODE=BACKLOG
 ```bash
 task-cli project add BACKLOG "Product Backlog" "Main project backlog"   # (alias: create)
 task-cli project list                                                  # (alias: ls), TSV default
-task-cli project list -F table  # formatted table view (shorthand -F, --format table)
-task-cli project list -n        # no header row
-task-cli project list -d -t     # include description and creation date columns
-task-cli project view BACKLOG   # view project details (alias: show)
+task-cli project list -n         # no header row
+task-cli project list -d -t      # include description and creation date columns
+task-cli project view BACKLOG    # view project details (alias: show)
 task-cli project view BACKLOG -t # with timestamps
 task-cli project update BACKLOG --name "New Name" --desc "New description" # update project (aliases: edit, mod)
 task-cli np BACKLOG "Product Backlog" "Main project backlog"   # shorthand add
@@ -73,7 +72,6 @@ task-cli task add -p 1 "Project Task" "Linked to project ID 1"
 task-cli task add -p 1 --priority high "Urgent Task"
 
 task-cli task list              # pending tasks (default), TSV with header (aliases: ls)
-task-cli task list -F table     # formatted table view (shorthand -F, --format table)
 task-cli task list -a           # all tasks, any status
 task-cli task list --done       # only completed
 task-cli task list in-progress  # filter by status (positional)
