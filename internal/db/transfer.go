@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -32,7 +33,7 @@ type TaskTransfer struct {
 	Title       string             `json:"title"`
 	Description string             `json:"description"`
 	Status      Status             `json:"status"`
-	Priority    string             `json:"priority"`
+	Priority    Priority           `json:"priority"`
 	AbortReason *string            `json:"abort_reason"`
 	CreatedAt   time.Time          `json:"created_at"`
 	UpdatedAt   time.Time          `json:"updated_at"`
@@ -85,26 +86,8 @@ type ImportResult struct {
 	Warnings          []string `json:"warnings,omitempty"`
 }
 
-func isValidStatus(s Status) bool {
-	switch strings.ToLower(strings.TrimSpace(string(s))) {
-	case string(StatusPending), string(StatusInProgress), string(StatusDone), string(StatusAborted), "abort", string(StatusDeleted):
-		return true
-	default:
-		return false
-	}
-}
-
-func isValidPriority(p string) bool {
-	switch strings.ToLower(strings.TrimSpace(p)) {
-	case "low", "medium", "high", "urgent":
-		return true
-	default:
-		return false
-	}
-}
-
 // ExportData exports projects, tasks, and documents according to the given options.
-func (s *Store) ExportData(opts ExportOptions) (*TransferData, error) {
+func (s *Store) ExportData(ctx context.Context, opts ExportOptions) (*TransferData, error) {
 	data := &TransferData{
 		Version:         CurrentSchemaVersion,
 		ExportedAt:      time.Now().UTC(),
@@ -117,21 +100,21 @@ func (s *Store) ExportData(opts ExportOptions) (*TransferData, error) {
 
 	var targetProjects []Project
 	if opts.ProjectCode != "" {
-		p, err := s.GetProjectByCode(opts.ProjectCode)
+		p, err := s.GetProjectByCode(ctx, opts.ProjectCode)
 		if err != nil {
 			return nil, err
 		}
 		targetProjects = append(targetProjects, *p)
 	} else {
 		var err error
-		targetProjects, err = s.ListProjects()
+		targetProjects, err = s.ListProjects(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list projects for export: %w", err)
 		}
 	}
 
 	// Fetch all documents indexed by task ID
-	docRows, err := s.db.Query(`SELECT task_id, name, type, file_path, created_at FROM documents ORDER BY id ASC`)
+	docRows, err := s.db.QueryContext(ctx, `SELECT task_id, name, type, file_path, created_at FROM documents ORDER BY id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query documents for export: %w", err)
 	}
@@ -162,12 +145,12 @@ func (s *Store) ExportData(opts ExportOptions) (*TransferData, error) {
 		query += ` AND t.deleted_at IS NULL`
 	}
 	if opts.Status != "" {
-		st := opts.Status
-		if st == "abort" {
-			st = string(StatusAborted)
+		status, ok := ParseStatus(opts.Status)
+		if !ok {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidStatus, opts.Status)
 		}
 		query += ` AND t.status = ?`
-		args = append(args, st)
+		args = append(args, string(status))
 	}
 	if opts.ProjectCode != "" {
 		query += ` AND p.code = ? COLLATE NOCASE`
@@ -175,7 +158,7 @@ func (s *Store) ExportData(opts ExportOptions) (*TransferData, error) {
 	}
 	query += ` ORDER BY t.id ASC`
 
-	taskRows, err := s.db.Query(query, args...)
+	taskRows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tasks for export: %w", err)
 	}
@@ -183,12 +166,10 @@ func (s *Store) ExportData(opts ExportOptions) (*TransferData, error) {
 
 	projectTasks := make(map[int64][]TaskTransfer)
 	for taskRows.Next() {
-		var t Task
-		var st string
-		if err := taskRows.Scan(&t.ID, &t.ProjectID, &t.ProjectCode, &t.Title, &t.Description, &st, &t.Priority, &t.AbortReason, &t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
+		t, err := scanTask(taskRows)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan task for export: %w", err)
 		}
-		t.Status = Status(st)
 
 		docs := docsByTask[t.ID]
 		if docs == nil {
@@ -237,7 +218,7 @@ func (s *Store) ExportData(opts ExportOptions) (*TransferData, error) {
 }
 
 // ImportData imports projects, tasks, and documents from a TransferData struct.
-func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResult, error) {
+func (s *Store) ImportData(ctx context.Context, data *TransferData, opts ImportOptions) (*ImportResult, error) {
 	if data == nil {
 		return nil, errors.New("cannot import nil transfer data")
 	}
@@ -250,7 +231,7 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 		Warnings: make([]string, 0),
 	}
 
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -271,7 +252,8 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 			return nil
 		}
 
-		if !isValidStatus(t.Status) {
+		st, ok := ParseStatus(string(t.Status))
+		if !ok {
 			if opts.Strict {
 				return fmt.Errorf("%w: %q", ErrInvalidStatus, t.Status)
 			}
@@ -279,13 +261,9 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 			res.TasksSkipped++
 			return nil
 		}
-		st := Status(strings.ToLower(strings.TrimSpace(string(t.Status))))
-		if st == "abort" {
-			st = StatusAborted
-		}
 
-		prio := strings.ToLower(strings.TrimSpace(t.Priority))
-		if !isValidPriority(prio) {
+		prio, ok := ParsePriority(string(t.Priority))
+		if !ok {
 			if opts.Strict {
 				return fmt.Errorf("%w: %q", ErrInvalidPriority, t.Priority)
 			}
@@ -303,7 +281,7 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 			updatedAt = createdAt
 		}
 
-		taskRes, err := tx.Exec(
+		taskRes, err := tx.ExecContext(ctx,
 			`INSERT INTO tasks (project_id, title, description, status, priority, abort_reason, created_at, updated_at, deleted_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			projectID, title, t.Description, string(st), prio, t.AbortReason, createdAt, updatedAt, t.DeletedAt,
@@ -348,7 +326,7 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 				docCreatedAt = time.Now().UTC()
 			}
 
-			_, err := tx.Exec(
+			_, err := tx.ExecContext(ctx,
 				`INSERT INTO documents (task_id, name, type, file_path, created_at) VALUES (?, ?, ?, ?, ?)`,
 				taskID, docName, docType, docPath, docCreatedAt,
 			)
@@ -379,7 +357,7 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 
 		var projectID int64
 		var existingName, existingDesc string
-		err := tx.QueryRow(`SELECT id, name, COALESCE(description, '') FROM projects WHERE code = ? COLLATE NOCASE`, code).Scan(&projectID, &existingName, &existingDesc)
+		err := tx.QueryRowContext(ctx, `SELECT id, name, COALESCE(description, '') FROM projects WHERE code = ? COLLATE NOCASE`, code).Scan(&projectID, &existingName, &existingDesc)
 
 		if err == nil {
 			// Project exists
@@ -388,7 +366,7 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 				if projUpdated.IsZero() {
 					projUpdated = time.Now().UTC()
 				}
-				_, err := tx.Exec(`UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?`, name, proj.Description, projUpdated, projectID)
+				_, err := tx.ExecContext(ctx, `UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?`, name, proj.Description, projUpdated, projectID)
 				if err != nil {
 					return nil, fmt.Errorf("failed to update project %s: %w", code, err)
 				}
@@ -405,7 +383,7 @@ func (s *Store) ImportData(data *TransferData, opts ImportOptions) (*ImportResul
 			if projUpdated.IsZero() {
 				projUpdated = projCreated
 			}
-			insertRes, err := tx.Exec(`INSERT INTO projects (code, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, code, name, proj.Description, projCreated, projUpdated)
+			insertRes, err := tx.ExecContext(ctx, `INSERT INTO projects (code, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, code, name, proj.Description, projCreated, projUpdated)
 			if err != nil {
 				return nil, fmt.Errorf("failed to insert project %s: %w", code, err)
 			}

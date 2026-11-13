@@ -56,29 +56,29 @@ func TestExportCmd(t *testing.T) {
 	defer cleanup()
 
 	// Seed data
-	proj, err := ctx.Store.AddProject("TEST", "Test Project", "Test project description")
+	proj, err := ctx.Store.AddProject(ctx.Context(), "TEST", "Test Project", "Test project description")
 	if err != nil {
 		t.Fatalf("failed to add project: %v", err)
 	}
 
-	task1, err := ctx.Store.Add("Active Task", "Task 1 description", &proj.ID, "high")
+	task1, err := ctx.Store.Add(ctx.Context(), "Active Task", "Task 1 description", &proj.ID, "high")
 	if err != nil {
 		t.Fatalf("failed to add task 1: %v", err)
 	}
-	_, err = ctx.Store.AddDocument(task1.ID, "Doc1", "pdf", "/tmp/doc1.pdf")
+	_, err = ctx.Store.AddDocument(ctx.Context(), task1.ID, "Doc1", "pdf", "/tmp/doc1.pdf")
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
 
-	task2, err := ctx.Store.Add("Deleted Task", "Task 2 description", &proj.ID, "low")
+	task2, err := ctx.Store.Add(ctx.Context(), "Deleted Task", "Task 2 description", &proj.ID, "low")
 	if err != nil {
 		t.Fatalf("failed to add task 2: %v", err)
 	}
-	if err := ctx.Store.Delete(task2.ID); err != nil {
+	if err := ctx.Store.Delete(ctx.Context(), task2.ID); err != nil {
 		t.Fatalf("failed to delete task 2: %v", err)
 	}
 
-	standalone, err := ctx.Store.Add("Standalone Task", "Standalone description", nil, "medium")
+	standalone, err := ctx.Store.Add(ctx.Context(), "Standalone Task", "Standalone description", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to add standalone task: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestImportCmd(t *testing.T) {
 		}
 
 		// Verify in DB
-		p, err := ctx.Store.GetProjectByCode("IMP_CLI")
+		p, err := ctx.Store.GetProjectByCode(ctx.Context(), "IMP_CLI")
 		if err != nil {
 			t.Fatalf("project not found in DB: %v", err)
 		}
@@ -340,7 +340,7 @@ func TestImportCmd(t *testing.T) {
 		}
 
 		// Project must NOT exist in DB
-		_, err = ctx.Store.GetProjectByCode("IMP_CLI")
+		_, err = ctx.Store.GetProjectByCode(ctx.Context(), "IMP_CLI")
 		if !strings.Contains(err.Error(), "project not found") {
 			t.Errorf("expected project not found in dry run, got: %v", err)
 		}
@@ -351,7 +351,7 @@ func TestImportCmd(t *testing.T) {
 		defer cleanup()
 
 		// Pre-create project with same code
-		_, err := ctx.Store.AddProject("IMP_CLI", "Old Name", "Old Description")
+		_, err := ctx.Store.AddProject(ctx.Context(), "IMP_CLI", "Old Name", "Old Description")
 		if err != nil {
 			t.Fatalf("failed to add pre-existing project: %v", err)
 		}
@@ -372,7 +372,7 @@ func TestImportCmd(t *testing.T) {
 			t.Errorf("expected overwrite summary, got: %s", out)
 		}
 
-		p, err := ctx.Store.GetProjectByCode("IMP_CLI")
+		p, err := ctx.Store.GetProjectByCode(ctx.Context(), "IMP_CLI")
 		if err != nil {
 			t.Fatalf("GetProjectByCode failed: %v", err)
 		}

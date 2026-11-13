@@ -9,6 +9,9 @@ import (
 	"testing"
 )
 
+// Root is the default command tree used by tests.
+var Root = NewRootCommand()
+
 func TestRouter_SimpleAndLeafDispatch(t *testing.T) {
 	executed := false
 	var capturedArgs []string
@@ -433,7 +436,7 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 	}
 
 	// Test Execute with unknown command
-	handled, err := Execute(nil, "nonexistent-command-xyz", []string{})
+	handled, err := Execute(Root, nil, "nonexistent-command-xyz", []string{})
 	if handled {
 		t.Fatal("expected handled=false for unknown command")
 	}
@@ -485,7 +488,7 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error running 'task prio': %v", err)
 	}
-	task, err := ctx.Store.GetTaskByID(1)
+	task, err := ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || task.Priority != "urgent" {
 		t.Fatalf("expected priority urgent, got %v (err: %v)", task.Priority, err)
 	}
@@ -506,7 +509,7 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting in-progress: %v", err)
 	}
-	task, err = ctx.Store.GetTaskByID(1)
+	task, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || task.Status != "in-progress" {
 		t.Fatalf("expected status in-progress, got %v", task.Status)
 	}
@@ -516,7 +519,7 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error running 'task done': %v", err)
 	}
-	task, err = ctx.Store.GetTaskByID(1)
+	task, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || task.Status != "done" {
 		t.Fatalf("expected status done, got %v", task.Status)
 	}
@@ -526,7 +529,7 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting abort: %v", err)
 	}
-	task, err = ctx.Store.GetTaskByID(1)
+	task, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || task.Status != "aborted" {
 		t.Fatalf("expected status aborted, got %v", task.Status)
 	}
@@ -558,23 +561,23 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	}
 
 	// 12. Execute dispatch via top-level command "task"
-	handled, err := Execute(ctx, "task", []string{"list"})
+	handled, err := Execute(Root, ctx, "task", []string{"list"})
 	if !handled || err != nil {
-		t.Fatalf("expected handled=true, err=nil for Execute('task', ['list']), got handled=%v, err=%v", handled, err)
+		t.Fatalf("expected handled=true, err=nil for Execute(Root, 'task', ['list']), got handled=%v, err=%v", handled, err)
 	}
 
 	// 13. Legacy flat commands are handled and routed via flat aliases
-	handled, err = Execute(ctx, "add", []string{"Flat Add Task"})
+	handled, err = Execute(Root, ctx, "add", []string{"Flat Add Task"})
 	if !handled || err != nil {
 		t.Fatalf("expected handled=true, err=nil for legacy flat 'add', got handled=%v, err=%v", handled, err)
 	}
 
-	handled, err = Execute(ctx, "list", []string{})
+	handled, err = Execute(Root, ctx, "list", []string{})
 	if !handled || err != nil {
 		t.Fatalf("expected handled=true, err=nil for legacy flat 'list', got handled=%v, err=%v", handled, err)
 	}
 
-	handled, err = Execute(ctx, "projects", []string{})
+	handled, err = Execute(Root, ctx, "projects", []string{})
 	if !handled || err != nil {
 		t.Fatalf("expected handled=true, err=nil for legacy flat 'projects', got handled=%v, err=%v", handled, err)
 	}
@@ -595,7 +598,7 @@ func TestRouter_TaskDocSubcommands(t *testing.T) {
 	}
 
 	// 1. Create a task to attach to
-	task, err := ctx.Store.Add("Test Doc Hierarchy", "Testing doc subcommands", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Test Doc Hierarchy", "Testing doc subcommands", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -646,7 +649,7 @@ func TestRouter_TaskDocSubcommands(t *testing.T) {
 		t.Fatalf("expected document listed via 't docs list', got:\n%s", out)
 	}
 
-	docs, err := ctx.Store.ListDocuments(task.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil || len(docs) != 2 {
 		t.Fatalf("expected 2 documents, got %d (err: %v)", len(docs), err)
 	}
@@ -665,7 +668,7 @@ func TestRouter_TaskDocSubcommands(t *testing.T) {
 		t.Fatalf("unexpected error running 't doc rm': %v", err)
 	}
 
-	remainingDocs, err := ctx.Store.ListDocuments(task.ID)
+	remainingDocs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil || len(remainingDocs) != 0 {
 		t.Fatalf("expected 0 documents remaining, got %d (err: %v)", len(remainingDocs), err)
 	}

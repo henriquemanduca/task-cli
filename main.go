@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"task-cli/internal/cmd"
 )
@@ -43,20 +45,28 @@ func printUsage() {
 }
 
 func main() {
-	rawArgs := os.Args[1:]
+	os.Exit(run(os.Args[1:]))
+}
 
+func run(rawArgs []string) int {
 	ctx, remainingArgs, cleanup, err := cmd.ResolveContext(rawArgs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	if cleanup != nil {
 		defer cleanup()
 	}
 
+	if ctx != nil {
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		ctx.Ctx = sigCtx
+	}
+
 	if len(remainingArgs) == 0 {
 		printUsage()
-		os.Exit(0)
+		return 0
 	}
 
 	command := remainingArgs[0]
@@ -65,32 +75,35 @@ func main() {
 	switch command {
 	case "version", "-v", "--version":
 		printVersion()
-		return
+		return 0
 
 	case "help":
 		if len(cmdArgs) > 0 {
-			if target, _ := cmd.Root.Resolve(cmdArgs); target != nil && target != cmd.Root {
+			root := cmd.NewRootCommand()
+			if target, _ := root.Resolve(cmdArgs); target != nil && target != root {
 				target.PrintHelp(os.Stdout)
-				return
+				return 0
 			}
 		}
 		printUsage()
-		return
+		return 0
 
 	case "-h", "--help":
 		printUsage()
-		return
+		return 0
 	}
 
-	handled, cmdErr := cmd.Execute(ctx, command, cmdArgs)
+	handled, cmdErr := cmd.Execute(cmd.NewRootCommand(), ctx, command, cmdArgs)
 	if !handled {
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
 		printUsage()
-		os.Exit(1)
+		return 1
 	}
 
 	if cmdErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", cmdErr)
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }

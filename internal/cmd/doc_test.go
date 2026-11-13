@@ -29,7 +29,7 @@ func TestDocCommands(t *testing.T) {
 	}
 
 	// Create a task to attach documents to
-	task, err := ctx.Store.Add("Design Architecture", "High level design", nil, "high")
+	task, err := ctx.Store.Add(ctx.Context(), "Design Architecture", "High level design", nil, "high")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestDocCommands(t *testing.T) {
 		t.Fatalf("failed to add document: %v", err)
 	}
 
-	docs, err := ctx.Store.ListDocuments(task.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil {
 		t.Fatalf("failed to list documents from store: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestDocCommands(t *testing.T) {
 		t.Fatalf("failed to add second document with flags: %v", err)
 	}
 
-	docs, err = ctx.Store.ListDocuments(task.ID)
+	docs, err = ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil {
 		t.Fatalf("failed to list documents from store: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestDocCommands(t *testing.T) {
 		t.Fatalf("unexpected error deleting document: %v", err)
 	}
 
-	docsAfterDelete, err := ctx.Store.ListDocuments(task.ID)
+	docsAfterDelete, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil {
 		t.Fatalf("failed to list documents after delete: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestDocAdd_Link(t *testing.T) {
 		t.Fatalf("failed to create file: %v", err)
 	}
 
-	task, err := ctx.Store.Add("Task for link test", "Testing --link", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Task for link test", "Testing --link", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestDocAdd_Link(t *testing.T) {
 		t.Fatalf("DocAdd --link failed: %v", err)
 	}
 
-	docs, err := ctx.Store.ListDocuments(task.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil {
 		t.Fatalf("ListDocuments failed: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestDocAdd_Copy(t *testing.T) {
 		t.Fatalf("failed to create file: %v", err)
 	}
 
-	task, err := ctx.Store.Add("Task for copy test", "Testing --copy", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Task for copy test", "Testing --copy", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestDocAdd_Copy(t *testing.T) {
 		t.Fatalf("DocAdd --copy failed: %v", err)
 	}
 
-	docs, err := ctx.Store.ListDocuments(task.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil {
 		t.Fatalf("ListDocuments failed: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestDocAdd_LargeFile_ThresholdAndWarning(t *testing.T) {
 	}
 	f.Close()
 
-	task, err := ctx.Store.Add("Large file task", "Testing large file threshold", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Large file task", "Testing large file threshold", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestDocAdd_LargeFile_ThresholdAndWarning(t *testing.T) {
 		t.Errorf("expected stderr warning %q, got %q", expectedWarning, stderrBuf.String())
 	}
 
-	docs, err := ctx.Store.ListDocuments(task.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil {
 		t.Fatalf("ListDocuments failed: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestDocAdd_LargeFile_ThresholdAndWarning(t *testing.T) {
 
 	// Case 2: With --copy, file > 100MB is duplicated, NO warning on Stderr
 	stderrBuf.Reset()
-	task2, err := ctx.Store.Add("Large file forced copy", "Testing --copy", nil, "medium")
+	task2, err := ctx.Store.Add(ctx.Context(), "Large file forced copy", "Testing --copy", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task 2: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestDocAdd_LargeFile_ThresholdAndWarning(t *testing.T) {
 		t.Errorf("unexpected warning in stderr with --copy: %q", stderrBuf.String())
 	}
 
-	docs2, err := ctx.Store.ListDocuments(task2.ID)
+	docs2, err := ctx.Store.ListDocuments(ctx.Context(), task2.ID)
 	if err != nil {
 		t.Fatalf("ListDocuments for task2 failed: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestDocAdd_ConflictingFlags(t *testing.T) {
 	docFile := filepath.Join(tempDir, "doc.txt")
 	_ = os.WriteFile(docFile, []byte("content"), 0644)
 
-	task, _ := ctx.Store.Add("Task", "Description", nil, "medium")
+	task, _ := ctx.Store.Add(ctx.Context(), "Task", "Description", nil, "medium")
 	taskIDStr := fmt.Sprintf("%d", task.ID)
 
 	err := DocAdd(ctx, []string{taskIDStr, docFile, "--copy", "--link"})
@@ -344,7 +344,7 @@ func TestDocAdd_Rollback(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	task, err := ctx.Store.Add("Task for rollback test", "Testing rollback on DB error", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Task for rollback test", "Testing rollback on DB error", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestDocOpen_Headless(t *testing.T) {
 		t.Fatalf("failed to create test doc: %v", err)
 	}
 
-	task, err := ctx.Store.Add("Test Doc Open", "Testing doc open command", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Test Doc Open", "Testing doc open command", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestDocOpen_Headless(t *testing.T) {
 		t.Fatalf("failed to attach document: %v", err)
 	}
 
-	docs, err := ctx.Store.ListDocuments(task.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil || len(docs) == 0 {
 		t.Fatalf("failed to list docs: %v", err)
 	}
@@ -484,7 +484,7 @@ func TestDocOpen_Headless(t *testing.T) {
 
 	// 4. Deleted task validation:
 	// Soft delete task
-	if err := ctx.Store.Delete(task.ID); err != nil {
+	if err := ctx.Store.Delete(ctx.Context(), task.ID); err != nil {
 		t.Fatalf("failed to delete task: %v", err)
 	}
 
@@ -507,7 +507,7 @@ func TestDocPrune(t *testing.T) {
 	docFile1 := filepath.Join(tempDir, "legit.pdf")
 	_ = os.WriteFile(docFile1, []byte("legit content"), 0644)
 
-	task, err := ctx.Store.Add("Prune Task", "Testing doc prune", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Prune Task", "Testing doc prune", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -527,7 +527,7 @@ func TestDocPrune(t *testing.T) {
 	if err := DocAdd(ctx, []string{taskIDStr, docFile1}); err != nil {
 		t.Fatalf("failed to attach doc: %v", err)
 	}
-	docs, err := ctx.Store.ListDocuments(task.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil || len(docs) != 1 {
 		t.Fatalf("expected 1 doc, got %d (err: %v)", len(docs), err)
 	}
@@ -653,7 +653,7 @@ func TestDocRouterAndAliases(t *testing.T) {
 	docFile := filepath.Join(tempDir, "router_spec.pdf")
 	_ = os.WriteFile(docFile, []byte("router spec content"), 0644)
 
-	task, err := ctx.Store.Add("Router Doc Task", "Testing router", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Router Doc Task", "Testing router", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -663,7 +663,7 @@ func TestDocRouterAndAliases(t *testing.T) {
 	if err := DocAdd(ctx, []string{taskIDStr, docFile}); err != nil {
 		t.Fatalf("failed to add doc: %v", err)
 	}
-	docs, err := ctx.Store.ListDocuments(task.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
 	if err != nil || len(docs) == 0 {
 		t.Fatalf("failed to list docs: %v", err)
 	}
@@ -702,7 +702,7 @@ func TestDocRouterAndAliases(t *testing.T) {
 
 	// 4. Flat alias "doc-open" via cmd.Execute
 	buf.Reset()
-	handled, err := Execute(ctx, "doc-open", []string{taskIDStr})
+	handled, err := Execute(Root, ctx, "doc-open", []string{taskIDStr})
 	if !handled || err != nil {
 		t.Fatalf("Execute 'doc-open' failed (handled=%v): %v", handled, err)
 	}
@@ -712,7 +712,7 @@ func TestDocRouterAndAliases(t *testing.T) {
 
 	// 5. Flat alias "doc-prune" via cmd.Execute
 	buf.Reset()
-	handled, err = Execute(ctx, "doc-prune", []string{"--dry-run"})
+	handled, err = Execute(Root, ctx, "doc-prune", []string{"--dry-run"})
 	if !handled || err != nil {
 		t.Fatalf("Execute 'doc-prune' failed (handled=%v): %v", handled, err)
 	}

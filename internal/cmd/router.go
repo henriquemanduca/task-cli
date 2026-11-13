@@ -21,8 +21,9 @@ type Command struct {
 	Handler     Handler
 	Subcommands []*Command
 
-	parent *Command
-	out    io.Writer
+	parent         *Command
+	out            io.Writer
+	useFlatAliases bool
 }
 
 // SetHandler configures a Handler for this command, synchronizing Run.
@@ -61,7 +62,7 @@ func (c *Command) FindSubcommand(nameOrAlias string) *Command {
 // FindCommand resolves a chain of names or aliases sequentially from this command.
 func (c *Command) FindCommand(names ...string) *Command {
 	lookupNames := names
-	if c == Root && len(names) == 1 {
+	if c.useFlatAliases && len(names) == 1 {
 		if targetPath, ok := ResolveFlatAlias(names[0]); ok {
 			lookupNames = targetPath
 		}
@@ -124,7 +125,7 @@ func (c *Command) Resolve(args []string) (*Command, []string) {
 	current := c
 	remaining := args
 
-	if c == Root {
+	if c.useFlatAliases {
 		remaining = ExpandAliases(args)
 	}
 
@@ -142,31 +143,11 @@ func (c *Command) Resolve(args []string) (*Command, []string) {
 }
 
 // Execute resolves arguments against the command tree and runs the target command,
-// handling hierarchical help and argument delegation.
+// handling hierarchical help and argument delegation. Global flags (--db/--format)
+// are resolved once by ResolveContext before dispatch.
 func (c *Command) Execute(ctx *Context, args []string) error {
-	if c == Root {
-		gf, filteredArgs, err := ParseGlobalFlags(args)
-		if err != nil {
-			return err
-		}
-		if ctx == nil {
-			ctx = &Context{}
-		}
-		if gf.Format != "" {
-			ctx.Format = gf.Format
-		}
-		if gf.DBPath != "" {
-			ctx.DBPath = gf.DBPath
-		}
-		if ctx.Store == nil && gf.DBPath != "" {
-			store, path, err := ResolveStore(gf.DBPath)
-			if err != nil {
-				return err
-			}
-			ctx.Store = store
-			ctx.DBPath = path
-		}
-		args = filteredArgs
+	if ctx == nil {
+		ctx = &Context{}
 	}
 
 	// Check for top-level help keyword (e.g. "help <subcommand>")
@@ -178,7 +159,8 @@ func (c *Command) Execute(ctx *Context, args []string) error {
 		return target.PrintHelp(nil)
 	}
 
-	if c == Root {
+	if c.useFlatAliases {
+		// Kept here for callers that inspect args before Resolve; Resolve is idempotent.
 		args = ExpandAliases(args)
 	}
 
@@ -287,8 +269,9 @@ func (c *Command) PrintHelp(w io.Writer) error {
 // NewRootCommand creates the root command with all built-in CLI commands attached.
 func NewRootCommand() *Command {
 	root := &Command{
-		Name:        "task-cli",
-		Description: "Single-binary CLI for task management backed by SQLite",
+		Name:           "task-cli",
+		Description:    "Single-binary CLI for task management backed by SQLite",
+		useFlatAliases: true,
 	}
 
 	projectCmd := &Command{
@@ -550,6 +533,3 @@ func NewRootCommand() *Command {
 
 	return root
 }
-
-// Root is the default root command tree for task-cli.
-var Root = NewRootCommand()

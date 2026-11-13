@@ -40,7 +40,7 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error adding task with -p at end: %v", err)
 	}
-	tAdded, err := ctx.Store.GetTaskByID(2)
+	tAdded, err := ctx.Store.GetTaskByID(ctx.Context(), 2)
 	if err != nil {
 		t.Fatalf("failed to retrieve task 2: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error moving task to project by ID: %v", err)
 	}
-	tUpdated, err := ctx.Store.GetTaskByID(1)
+	tUpdated, err := ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || tUpdated.ProjectID == nil || *tUpdated.ProjectID != 1 {
 		t.Fatalf("expected task 1 to have ProjectID 1, got %+v (err: %v)", tUpdated, err)
 	}
@@ -159,7 +159,7 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error detaching task from project: %v", err)
 	}
-	tUpdated, err = ctx.Store.GetTaskByID(1)
+	tUpdated, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || tUpdated.ProjectID != nil {
 		t.Fatalf("expected task 1 ProjectID to be nil, got %+v (err: %v)", tUpdated, err)
 	}
@@ -187,7 +187,7 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting in-progress: %v", err)
 	}
-	t1, err := ctx.Store.GetTaskByID(1)
+	t1, err := ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || t1.Status != "in-progress" {
 		t.Fatalf("expected status 'in-progress', got %s (err: %v)", t1.Status, err)
 	}
@@ -196,7 +196,7 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting pending: %v", err)
 	}
-	t1, err = ctx.Store.GetTaskByID(1)
+	t1, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || t1.Status != "pending" {
 		t.Fatalf("expected status 'pending', got %s (err: %v)", t1.Status, err)
 	}
@@ -217,7 +217,7 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting done: %v", err)
 	}
-	t1, err = ctx.Store.GetTaskByID(1)
+	t1, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || t1.Status != "done" {
 		t.Fatalf("expected status 'done', got %s (err: %v)", t1.Status, err)
 	}
@@ -233,7 +233,7 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting priority: %v", err)
 	}
-	t1, err = ctx.Store.GetTaskByID(1)
+	t1, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || t1.Priority != "urgent" {
 		t.Fatalf("expected priority 'urgent', got %s (err: %v)", t1.Priority, err)
 	}
@@ -256,7 +256,7 @@ func TestTaskCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting abort: %v", err)
 	}
-	t1, err = ctx.Store.GetTaskByID(1)
+	t1, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil || t1.Status != db.StatusAborted {
 		t.Fatalf("expected status 'aborted', got %s (err: %v)", t1.Status, err)
 	}
@@ -287,7 +287,7 @@ func TestTaskCommands(t *testing.T) {
 	}
 
 	// Verify task status was set to deleted
-	exportData, err := ctx.Store.ExportData(db.ExportOptions{IncludeDeleted: true})
+	exportData, err := ctx.Store.ExportData(ctx.Context(), db.ExportOptions{IncludeDeleted: true})
 	if err != nil {
 		t.Fatalf("ExportData failed: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestTaskStatus(t *testing.T) {
 	defer cleanup()
 
 	// Create test task
-	task, err := ctx.Store.Add("Task for Status Test", "Desc", nil, "medium")
+	task, err := ctx.Store.Add(ctx.Context(), "Task for Status Test", "Desc", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to add task: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestTaskStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting in-progress: %v", err)
 	}
-	t1, err := ctx.Store.GetTaskByID(task.ID)
+	t1, err := ctx.Store.GetTaskByID(ctx.Context(), task.ID)
 	if err != nil || t1.Status != "in-progress" {
 		t.Fatalf("expected status 'in-progress', got %s (err: %v)", t1.Status, err)
 	}
@@ -377,7 +377,7 @@ func TestTaskStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting done: %v", err)
 	}
-	t1, err = ctx.Store.GetTaskByID(task.ID)
+	t1, err = ctx.Store.GetTaskByID(ctx.Context(), task.ID)
 	if err != nil || t1.Status != "done" {
 		t.Fatalf("expected status 'done', got %s (err: %v)", t1.Status, err)
 	}
@@ -392,7 +392,7 @@ func TestTaskStatus(t *testing.T) {
 	if !strings.Contains(out, "status set to 'aborted'") {
 		t.Fatalf("expected output to contain \"status set to 'aborted'\", got:\n%s", out)
 	}
-	t1, err = ctx.Store.GetTaskByID(task.ID)
+	t1, err = ctx.Store.GetTaskByID(ctx.Context(), task.ID)
 	if err != nil || t1.Status != db.StatusAborted {
 		t.Fatalf("expected status 'aborted', got %s (err: %v)", t1.Status, err)
 	}
@@ -437,7 +437,7 @@ func TestTaskStatus(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error resetting aborted task to pending, got nil")
 	}
-	t1, err = ctx.Store.GetTaskByID(task.ID)
+	t1, err = ctx.Store.GetTaskByID(ctx.Context(), task.ID)
 	if err != nil || t1.Status != db.StatusAborted {
 		t.Fatalf("expected status 'aborted', got %s (err: %v)", t1.Status, err)
 	}
@@ -590,4 +590,32 @@ func TestTaskListOrderByProjectCode(t *testing.T) {
 	}
 }
 
+func TestTaskAddRejectsInvalidPriority(t *testing.T) {
+	ctx, cleanup := setupTestContext(t)
+	defer cleanup()
 
+	err := TaskAdd(ctx, []string{"Task", "--priority", "bogus"})
+	if err == nil {
+		t.Fatal("expected invalid priority error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid priority") {
+		t.Errorf("expected invalid priority error, got %v", err)
+	}
+}
+
+func TestTaskUpdateRejectsInvalidPriority(t *testing.T) {
+	ctx, cleanup := setupTestContext(t)
+	defer cleanup()
+
+	if err := TaskAdd(ctx, []string{"Task"}); err != nil {
+		t.Fatalf("unexpected error adding task: %v", err)
+	}
+
+	err := TaskUpdate(ctx, []string{"1", "--priority", "bogus"})
+	if err == nil {
+		t.Fatal("expected invalid priority error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid priority") {
+		t.Errorf("expected invalid priority error, got %v", err)
+	}
+}

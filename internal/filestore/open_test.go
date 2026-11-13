@@ -51,19 +51,11 @@ func TestOpen_EmptyAndNonExistent(t *testing.T) {
 }
 
 func TestOpen_Linux_Headless(t *testing.T) {
-	origGOOS := currentGOOS
-	origOpener := runOpener
-	defer func() {
-		currentGOOS = origGOOS
-		runOpener = origOpener
-	}()
-
-	currentGOOS = "linux"
 	t.Setenv("DISPLAY", "")
 	t.Setenv("WAYLAND_DISPLAY", "")
 
-	runOpener = func(name string, args ...string) error {
-		t.Fatalf("runOpener should not be called in headless mode (invoked with %s %v)", name, args)
+	failOpener := func(name string, args ...string) error {
+		t.Fatalf("opener should not be called in headless mode (invoked with %s %v)", name, args)
 		return nil
 	}
 
@@ -83,7 +75,7 @@ func TestOpen_Linux_Headless(t *testing.T) {
 	}
 
 	t.Run("OpenFolder returns exact path in headless mode", func(t *testing.T) {
-		out, err := OpenFolder(tempDir)
+		out, err := openPath(tempDir, false, "linux", failOpener)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -94,7 +86,7 @@ func TestOpen_Linux_Headless(t *testing.T) {
 	})
 
 	t.Run("OpenFile returns exact path in headless mode", func(t *testing.T) {
-		out, err := OpenFile(testFile)
+		out, err := openPath(testFile, true, "linux", failOpener)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -106,14 +98,6 @@ func TestOpen_Linux_Headless(t *testing.T) {
 }
 
 func TestOpen_Linux_GraphicDisplay(t *testing.T) {
-	origGOOS := currentGOOS
-	origOpener := runOpener
-	defer func() {
-		currentGOOS = origGOOS
-		runOpener = origOpener
-	}()
-
-	currentGOOS = "linux"
 	t.Setenv("DISPLAY", ":0")
 	t.Setenv("WAYLAND_DISPLAY", "")
 
@@ -129,13 +113,13 @@ func TestOpen_Linux_GraphicDisplay(t *testing.T) {
 		var recordedName string
 		var recordedArgs []string
 
-		runOpener = func(name string, args ...string) error {
+		recorder := func(name string, args ...string) error {
 			recordedName = name
 			recordedArgs = args
 			return nil
 		}
 
-		out, err := OpenFolder(tempDir)
+		out, err := openPath(tempDir, false, "linux", recorder)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -146,7 +130,7 @@ func TestOpen_Linux_GraphicDisplay(t *testing.T) {
 			t.Errorf("unexpected command: %s %v", recordedName, recordedArgs)
 		}
 
-		out, err = OpenFile(testFile)
+		out, err = openPath(testFile, true, "linux", recorder)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -159,11 +143,11 @@ func TestOpen_Linux_GraphicDisplay(t *testing.T) {
 	})
 
 	t.Run("opener failure falls back to path output", func(t *testing.T) {
-		runOpener = func(name string, args ...string) error {
+		failOpener := func(name string, args ...string) error {
 			return errors.New("xdg-open failed")
 		}
 
-		out, err := OpenFolder(tempDir)
+		out, err := openPath(tempDir, false, "linux", failOpener)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -172,7 +156,7 @@ func TestOpen_Linux_GraphicDisplay(t *testing.T) {
 			t.Errorf("expected fallback %q, got %q", expected, out)
 		}
 
-		out, err = OpenFile(testFile)
+		out, err = openPath(testFile, true, "linux", failOpener)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -184,14 +168,6 @@ func TestOpen_Linux_GraphicDisplay(t *testing.T) {
 }
 
 func TestOpen_Darwin(t *testing.T) {
-	origGOOS := currentGOOS
-	origOpener := runOpener
-	defer func() {
-		currentGOOS = origGOOS
-		runOpener = origOpener
-	}()
-
-	currentGOOS = "darwin"
 	tempDir := t.TempDir()
 	absTempDir, _ := filepath.Abs(tempDir)
 	testFile := filepath.Join(tempDir, "doc.pdf")
@@ -204,13 +180,13 @@ func TestOpen_Darwin(t *testing.T) {
 		var recordedName string
 		var recordedArgs []string
 
-		runOpener = func(name string, args ...string) error {
+		recorder := func(name string, args ...string) error {
 			recordedName = name
 			recordedArgs = args
 			return nil
 		}
 
-		out, err := OpenFolder(tempDir)
+		out, err := openPath(tempDir, false, "darwin", recorder)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -226,13 +202,13 @@ func TestOpen_Darwin(t *testing.T) {
 		var recordedName string
 		var recordedArgs []string
 
-		runOpener = func(name string, args ...string) error {
+		recorder := func(name string, args ...string) error {
 			recordedName = name
 			recordedArgs = args
 			return nil
 		}
 
-		out, err := OpenFile(testFile)
+		out, err := openPath(testFile, true, "darwin", recorder)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -245,11 +221,11 @@ func TestOpen_Darwin(t *testing.T) {
 	})
 
 	t.Run("opener failure falls back to path output", func(t *testing.T) {
-		runOpener = func(name string, args ...string) error {
+		failOpener := func(name string, args ...string) error {
 			return errors.New("open failed")
 		}
 
-		out, err := OpenFile(testFile)
+		out, err := openPath(testFile, true, "darwin", failOpener)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -261,14 +237,6 @@ func TestOpen_Darwin(t *testing.T) {
 }
 
 func TestOpen_Windows(t *testing.T) {
-	origGOOS := currentGOOS
-	origOpener := runOpener
-	defer func() {
-		currentGOOS = origGOOS
-		runOpener = origOpener
-	}()
-
-	currentGOOS = "windows"
 	tempDir := t.TempDir()
 	absTempDir, _ := filepath.Abs(tempDir)
 	testFile := filepath.Join(tempDir, "sheet.xlsx")
@@ -281,13 +249,13 @@ func TestOpen_Windows(t *testing.T) {
 		var recordedName string
 		var recordedArgs []string
 
-		runOpener = func(name string, args ...string) error {
+		recorder := func(name string, args ...string) error {
 			recordedName = name
 			recordedArgs = args
 			return nil
 		}
 
-		out, err := OpenFolder(tempDir)
+		out, err := openPath(tempDir, false, "windows", recorder)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -303,13 +271,13 @@ func TestOpen_Windows(t *testing.T) {
 		var recordedName string
 		var recordedArgs []string
 
-		runOpener = func(name string, args ...string) error {
+		recorder := func(name string, args ...string) error {
 			recordedName = name
 			recordedArgs = args
 			return nil
 		}
 
-		out, err := OpenFile(testFile)
+		out, err := openPath(testFile, true, "windows", recorder)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -323,11 +291,11 @@ func TestOpen_Windows(t *testing.T) {
 	})
 
 	t.Run("opener failure falls back to path output", func(t *testing.T) {
-		runOpener = func(name string, args ...string) error {
+		failOpener := func(name string, args ...string) error {
 			return errors.New("explorer failed")
 		}
 
-		out, err := OpenFile(testFile)
+		out, err := openPath(testFile, true, "windows", failOpener)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -339,14 +307,6 @@ func TestOpen_Windows(t *testing.T) {
 }
 
 func TestOpen_OtherOS(t *testing.T) {
-	origGOOS := currentGOOS
-	origOpener := runOpener
-	defer func() {
-		currentGOOS = origGOOS
-		runOpener = origOpener
-	}()
-
-	currentGOOS = "solaris"
 	tempDir := t.TempDir()
 	absTempDir, _ := filepath.Abs(tempDir)
 
@@ -354,7 +314,7 @@ func TestOpen_OtherOS(t *testing.T) {
 		t.Setenv("DISPLAY", "")
 		t.Setenv("WAYLAND_DISPLAY", "")
 
-		out, err := OpenFolder(tempDir)
+		out, err := openPath(tempDir, false, "solaris", defaultRunOpener)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -366,11 +326,12 @@ func TestOpen_OtherOS(t *testing.T) {
 
 	t.Run("display present with opener success", func(t *testing.T) {
 		t.Setenv("DISPLAY", ":0")
-		runOpener = func(name string, args ...string) error {
+
+		okOpener := func(name string, args ...string) error {
 			return nil
 		}
 
-		out, err := OpenFolder(tempDir)
+		out, err := openPath(tempDir, false, "solaris", okOpener)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

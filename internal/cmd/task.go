@@ -85,7 +85,7 @@ type TaskAddArgs struct {
 	Description string
 	ProjectID   *int64
 	ProjectCode string
-	Priority    string
+	Priority    db.Priority
 }
 
 // TaskAddResult holds the created task and associated project reference.
@@ -145,12 +145,17 @@ func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) 
 		description = strings.Join(posArgs[1:], " ")
 	}
 
+	parsedPriority, ok := db.ParsePriority(priority)
+	if !ok {
+		return TaskAddArgs{}, fmt.Errorf("invalid priority '%s'. Valid options: low, medium, high, urgent", priority)
+	}
+
 	return TaskAddArgs{
 		Title:       title,
 		Description: description,
 		ProjectID:   projectID,
 		ProjectCode: projectCode,
-		Priority:    priority,
+		Priority:    parsedPriority,
 	}, nil
 }
 
@@ -161,7 +166,7 @@ func (a *TaskAddAction) Execute(ctx *Context, args TaskAddArgs) (*TaskAddResult,
 
 	switch {
 	case projectID != nil:
-		proj, err := ctx.Store.GetProjectByID(*projectID)
+		proj, err := ctx.Store.GetProjectByID(ctx.Context(), *projectID)
 		if err != nil {
 			if errors.Is(err, db.ErrProjectNotFound) {
 				return nil, fmt.Errorf("project with ID %d not found", *projectID)
@@ -170,7 +175,7 @@ func (a *TaskAddAction) Execute(ctx *Context, args TaskAddArgs) (*TaskAddResult,
 		}
 		projectRef = proj.Code
 	case args.ProjectCode != "":
-		proj, err := ctx.Store.GetProjectByCode(args.ProjectCode)
+		proj, err := ctx.Store.GetProjectByCode(ctx.Context(), args.ProjectCode)
 		if err != nil {
 			if errors.Is(err, db.ErrProjectNotFound) {
 				return nil, fmt.Errorf("project '%s' configured in %s not found", args.ProjectCode, config.FileName)
@@ -181,7 +186,7 @@ func (a *TaskAddAction) Execute(ctx *Context, args TaskAddArgs) (*TaskAddResult,
 		projectRef = proj.Code
 	}
 
-	task, err := ctx.Store.Add(args.Title, args.Description, projectID, args.Priority)
+	task, err := ctx.Store.Add(ctx.Context(), args.Title, args.Description, projectID, args.Priority)
 	if err != nil {
 		return nil, fmt.Errorf("creating task: %w", err)
 	}
@@ -300,14 +305,11 @@ func (a *TaskListAction) Parse(ctx *Context, args []string) (TaskListArgs, error
 	} else if showDone || posStatus == "done" {
 		statusFilter = string(db.StatusDone)
 	} else if posStatus != "" {
-		switch db.Status(posStatus) {
-		case db.StatusPending, db.StatusInProgress, db.StatusDone, db.StatusAborted:
-			statusFilter = posStatus
-		case "abort":
-			statusFilter = string(db.StatusAborted)
-		default:
+		status, ok := db.ParseStatus(posStatus)
+		if !ok || status == db.StatusDeleted {
 			return TaskListArgs{}, fmt.Errorf("invalid status '%s'. Valid options: all, pending, in-progress, done, aborted", posStatus)
 		}
+		statusFilter = string(status)
 	} else {
 		statusFilter = string(db.StatusPending)
 	}
@@ -323,7 +325,7 @@ func (a *TaskListAction) Parse(ctx *Context, args []string) (TaskListArgs, error
 
 // Execute queries tasks from the database according to filters.
 func (a *TaskListAction) Execute(ctx *Context, args TaskListArgs) (*TaskListResult, error) {
-	tasks, err := ctx.Store.List(args.StatusFilter, args.ProjectCode)
+	tasks, err := ctx.Store.List(ctx.Context(), args.StatusFilter, args.ProjectCode)
 	if err != nil {
 		return nil, fmt.Errorf("querying tasks: %w", err)
 	}
@@ -358,7 +360,7 @@ func (a *TaskListAction) Format(ctx *Context, w io.Writer, res *TaskListResult) 
 			fmt.Sprintf("%04d", t.ID),
 			proj,
 			string(t.Status),
-			t.Priority,
+			string(t.Priority),
 			cleanOneLine(t.Title),
 		}
 
@@ -428,7 +430,7 @@ func (a *TaskViewAction) Parse(ctx *Context, args []string) (TaskViewArgs, error
 
 // Execute retrieves task information and attached documents from the database.
 func (a *TaskViewAction) Execute(ctx *Context, args TaskViewArgs) (*TaskViewResult, error) {
-	t, err := ctx.Store.GetTaskByID(args.ID)
+	t, err := ctx.Store.GetTaskByID(ctx.Context(), args.ID)
 	if err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
@@ -436,7 +438,10 @@ func (a *TaskViewAction) Execute(ctx *Context, args TaskViewArgs) (*TaskViewResu
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
-	docs, _ := ctx.Store.ListDocuments(t.ID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), t.ID)
+	if err != nil {
+		return nil, fmt.Errorf("listing task documents: %w", err)
+	}
 
 	return &TaskViewResult{
 		Task:      t,
@@ -501,7 +506,7 @@ type TaskUpdateArgs struct {
 	Description string
 	ProjectID   *int64
 	ClearProj   bool
-	Priority    string
+	Priority    db.Priority
 	HasTitle    bool
 	HasDesc     bool
 }
@@ -578,13 +583,22 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 		}
 	}
 
+	var parsedPriority db.Priority
+	if priority != "" {
+		var ok bool
+		parsedPriority, ok = db.ParsePriority(priority)
+		if !ok {
+			return TaskUpdateArgs{}, fmt.Errorf("invalid priority '%s'. Valid options: low, medium, high, urgent", priority)
+		}
+	}
+
 	return TaskUpdateArgs{
 		ID:          id,
 		Title:       title,
 		Description: desc,
 		ProjectID:   parsedProjectID,
 		ClearProj:   clearProj,
-		Priority:    priority,
+		Priority:    parsedPriority,
 		HasTitle:    hasTitle,
 		HasDesc:     hasDesc,
 	}, nil
@@ -592,7 +606,7 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 
 // Execute updates task details in the database.
 func (a *TaskUpdateAction) Execute(ctx *Context, args TaskUpdateArgs) (*TaskUpdateResult, error) {
-	if err := ctx.Store.CheckTaskMutable(args.ID); err != nil {
+	if err := ctx.Store.CheckTaskMutable(ctx.Context(), args.ID); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
 		}
@@ -602,7 +616,7 @@ func (a *TaskUpdateAction) Execute(ctx *Context, args TaskUpdateArgs) (*TaskUpda
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
-	existing, err := ctx.Store.GetTaskByID(args.ID)
+	existing, err := ctx.Store.GetTaskByID(ctx.Context(), args.ID)
 	if err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
@@ -625,7 +639,7 @@ func (a *TaskUpdateAction) Execute(ctx *Context, args TaskUpdateArgs) (*TaskUpda
 	if args.ClearProj {
 		newProjectID = nil
 	} else if args.ProjectID != nil {
-		proj, err := ctx.Store.GetProjectByID(*args.ProjectID)
+		proj, err := ctx.Store.GetProjectByID(ctx.Context(), *args.ProjectID)
 		if err != nil {
 			if errors.Is(err, db.ErrProjectNotFound) {
 				return nil, fmt.Errorf("project with ID %d not found", *args.ProjectID)
@@ -636,10 +650,10 @@ func (a *TaskUpdateAction) Execute(ctx *Context, args TaskUpdateArgs) (*TaskUpda
 	}
 
 	if args.Priority != "" {
-		newPriority = strings.TrimSpace(args.Priority)
+		newPriority = args.Priority
 	}
 
-	if err := ctx.Store.UpdateTaskDetails(args.ID, newTitle, newDesc, newProjectID, newPriority); err != nil {
+	if err := ctx.Store.UpdateTaskDetails(ctx.Context(), args.ID, newTitle, newDesc, newProjectID, newPriority); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
 		}
@@ -700,7 +714,7 @@ func (a *TaskEditAction) Parse(ctx *Context, args []string) (TaskEditArgs, error
 
 // Execute opens an external text editor and saves modified task descriptions.
 func (a *TaskEditAction) Execute(ctx *Context, args TaskEditArgs) (*TaskEditResult, error) {
-	if err := ctx.Store.CheckTaskMutable(args.ID); err != nil {
+	if err := ctx.Store.CheckTaskMutable(ctx.Context(), args.ID); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
 		}
@@ -710,7 +724,7 @@ func (a *TaskEditAction) Execute(ctx *Context, args TaskEditArgs) (*TaskEditResu
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
-	t, err := ctx.Store.GetTaskByID(args.ID)
+	t, err := ctx.Store.GetTaskByID(ctx.Context(), args.ID)
 	if err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
@@ -765,7 +779,7 @@ func (a *TaskEditAction) Execute(ctx *Context, args TaskEditArgs) (*TaskEditResu
 		return &TaskEditResult{ID: args.ID, Changed: false}, nil
 	}
 
-	if err := ctx.Store.UpdateDescription(args.ID, newDesc); err != nil {
+	if err := ctx.Store.UpdateDescription(ctx.Context(), args.ID, newDesc); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
 		}
@@ -829,7 +843,7 @@ func (a *TaskDeleteAction) Parse(ctx *Context, args []string) (TaskDeleteArgs, e
 
 // Execute soft-deletes the task in the database.
 func (a *TaskDeleteAction) Execute(ctx *Context, args TaskDeleteArgs) (*TaskDeleteResult, error) {
-	if err := ctx.Store.Delete(args.ID); err != nil {
+	if err := ctx.Store.Delete(ctx.Context(), args.ID); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found or already deleted", args.ID)
 		}
@@ -913,17 +927,18 @@ func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, e
 	}
 
 	statusLower := strings.ToLower(strings.TrimSpace(rawStatus))
-	var targetStatus db.Status
 	switch statusLower {
-	case "pending", "todo", "reopen":
-		targetStatus = db.StatusPending
-	case "in-progress", "start", "started", "progress", "doing":
-		targetStatus = db.StatusInProgress
-	case "done", "complete", "completed", "finish", "finished":
-		targetStatus = db.StatusDone
-	case "abort", "aborted", "cancel", "cancelled":
-		targetStatus = db.StatusAborted
-	default:
+	case "todo", "reopen":
+		statusLower = string(db.StatusPending)
+	case "start", "started", "progress", "doing":
+		statusLower = string(db.StatusInProgress)
+	case "complete", "completed", "finish", "finished":
+		statusLower = string(db.StatusDone)
+	case "cancel", "cancelled":
+		statusLower = string(db.StatusAborted)
+	}
+	targetStatus, ok := db.ParseStatus(statusLower)
+	if !ok || targetStatus == db.StatusDeleted {
 		return TaskStatusArgs{}, fmt.Errorf("invalid status '%s'. Valid options: pending, in-progress, done, aborted", rawStatus)
 	}
 
@@ -946,7 +961,7 @@ func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, e
 // Execute queries or updates the task status in the database.
 func (a *TaskStatusAction) Execute(ctx *Context, args TaskStatusArgs) (*TaskStatusResult, error) {
 	if args.IsQuery {
-		t, err := ctx.Store.GetTaskByID(args.ID)
+		t, err := ctx.Store.GetTaskByID(ctx.Context(), args.ID)
 		if err != nil {
 			if errors.Is(err, db.ErrTaskNotFound) {
 				return nil, fmt.Errorf("task with ID %d not found", args.ID)
@@ -961,7 +976,7 @@ func (a *TaskStatusAction) Execute(ctx *Context, args TaskStatusArgs) (*TaskStat
 		}, nil
 	}
 
-	if err := ctx.Store.UpdateStatus(args.ID, args.Status, args.Reason); err != nil {
+	if err := ctx.Store.UpdateStatus(ctx.Context(), args.ID, args.Status, args.Reason); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
 		}
@@ -1013,13 +1028,13 @@ func TaskStatus(ctx *Context, args []string) error {
 // TaskSetPriorityArgs represents the argument schema for setting task priority.
 type TaskSetPriorityArgs struct {
 	ID       int64
-	Priority string
+	Priority db.Priority
 }
 
 // TaskSetPriorityResult holds the task ID and new priority.
 type TaskSetPriorityResult struct {
 	ID       int64
-	Priority string
+	Priority db.Priority
 }
 
 // TaskSetPriorityAction encapsulates schema parsing, execution, and output formatting for priority updates.
@@ -1036,11 +1051,9 @@ func (a *TaskSetPriorityAction) Parse(ctx *Context, args []string) (TaskSetPrior
 		return TaskSetPriorityArgs{}, fmt.Errorf("invalid task ID: %s", args[0])
 	}
 
-	prio := strings.ToLower(strings.TrimSpace(args[1]))
-	switch prio {
-	case "low", "medium", "high", "urgent":
-	default:
-		return TaskSetPriorityArgs{}, fmt.Errorf("invalid priority '%s'. Valid options: low, medium, high, urgent", prio)
+	prio, ok := db.ParsePriority(args[1])
+	if !ok {
+		return TaskSetPriorityArgs{}, fmt.Errorf("invalid priority '%s'. Valid options: low, medium, high, urgent", args[1])
 	}
 
 	return TaskSetPriorityArgs{
@@ -1051,7 +1064,7 @@ func (a *TaskSetPriorityAction) Parse(ctx *Context, args []string) (TaskSetPrior
 
 // Execute updates task priority in the database.
 func (a *TaskSetPriorityAction) Execute(ctx *Context, args TaskSetPriorityArgs) (*TaskSetPriorityResult, error) {
-	if err := ctx.Store.UpdatePriority(args.ID, args.Priority); err != nil {
+	if err := ctx.Store.UpdatePriority(ctx.Context(), args.ID, args.Priority); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
 		}
@@ -1149,7 +1162,7 @@ func (a *TaskSetStatusAction) Parse(ctx *Context, args []string) (TaskSetStatusA
 
 // Execute applies the status update in the database.
 func (a *TaskSetStatusAction) Execute(ctx *Context, args TaskSetStatusArgs) (*TaskSetStatusResult, error) {
-	if err := ctx.Store.UpdateStatus(args.ID, args.Status, args.Reason); err != nil {
+	if err := ctx.Store.UpdateStatus(ctx.Context(), args.ID, args.Status, args.Reason); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.ID)
 		}

@@ -91,7 +91,7 @@ func (a *ExportAction) Parse(ctx *Context, args []string) (ExportArgs, error) {
 
 // Execute queries the database and generates the exported data structure.
 func (a *ExportAction) Execute(ctx *Context, args ExportArgs) (*ExportResult, error) {
-	data, err := ctx.Store.ExportData(db.ExportOptions{
+	data, err := ctx.Store.ExportData(ctx.Context(), db.ExportOptions{
 		ProjectCode:    args.ProjectFilter,
 		Status:         args.StatusFilter,
 		IncludeDeleted: args.IncludeDeleted,
@@ -249,7 +249,7 @@ func (a *ImportAction) Execute(ctx *Context, args ImportArgs) (*ImportResultWrap
 		return nil, fmt.Errorf("invalid JSON format: %w", err)
 	}
 
-	res, err := ctx.Store.ImportData(&data, db.ImportOptions{
+	res, err := ctx.Store.ImportData(ctx.Context(), &data, db.ImportOptions{
 		Overwrite: args.Overwrite,
 		Strict:    args.Strict,
 		ForceDocs: args.ForceDocs,
@@ -275,7 +275,7 @@ func (a *ImportAction) Format(ctx *Context, w io.Writer, wrap *ImportResultWrapp
 	res := wrap.Result
 	if len(res.Warnings) > 0 {
 		for _, warn := range res.Warnings {
-			fmt.Fprintf(os.Stderr, "Warning: %s\n", warn)
+			fmt.Fprintf(ctx.ErrWriter(), "Warning: %s\n", warn)
 		}
 	}
 

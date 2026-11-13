@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -27,7 +28,7 @@ func TestStoreOperations(t *testing.T) {
 	defer store.Close()
 
 	// 1. Project Creation
-	project, err := store.AddProject("CLI", "Task CLI Project", "Command line tool in Go")
+	project, err := store.AddProject(context.Background(), "CLI", "Task CLI Project", "Command line tool in Go")
 	if err != nil {
 		t.Fatalf("AddProject failed: %v", err)
 	}
@@ -35,7 +36,7 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("expected project code 'CLI', got %s", project.Code)
 	}
 
-	projects, err := store.ListProjects()
+	projects, err := store.ListProjects(context.Background())
 	if err != nil {
 		t.Fatalf("ListProjects failed: %v", err)
 	}
@@ -43,7 +44,7 @@ func TestStoreOperations(t *testing.T) {
 		t.Fatalf("expected 1 project, got %d", len(projects))
 	}
 
-	foundProject, err := store.GetProjectByCode("CLI")
+	foundProject, err := store.GetProjectByCode(context.Background(), "CLI")
 	if err != nil {
 		t.Fatalf("GetProjectByCode failed: %v", err)
 	}
@@ -51,11 +52,11 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("expected project ID %d, got %d", project.ID, foundProject.ID)
 	}
 
-	if _, err := store.GetProjectByCode("NON_EXISTENT"); !errors.Is(err, ErrProjectNotFound) {
+	if _, err := store.GetProjectByCode(context.Background(), "NON_EXISTENT"); !errors.Is(err, ErrProjectNotFound) {
 		t.Errorf("expected ErrProjectNotFound, got %v", err)
 	}
 
-	foundByID, err := store.GetProjectByID(project.ID)
+	foundByID, err := store.GetProjectByID(context.Background(), project.ID)
 	if err != nil {
 		t.Fatalf("GetProjectByID failed: %v", err)
 	}
@@ -63,27 +64,27 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("expected project code %s, got %s", project.Code, foundByID.Code)
 	}
 
-	if _, err := store.GetProjectByID(99999); !errors.Is(err, ErrProjectNotFound) {
+	if _, err := store.GetProjectByID(context.Background(), 99999); !errors.Is(err, ErrProjectNotFound) {
 		t.Errorf("expected ErrProjectNotFound for nonexistent ID, got %v", err)
 	}
 
 	// Update project
-	if err := store.UpdateProject(project.ID, "CLI Tools Updated", "Updated desc"); err != nil {
+	if err := store.UpdateProject(context.Background(), project.ID, "CLI Tools Updated", "Updated desc"); err != nil {
 		t.Fatalf("UpdateProject failed: %v", err)
 	}
-	updatedProj, err := store.GetProjectByID(project.ID)
+	updatedProj, err := store.GetProjectByID(context.Background(), project.ID)
 	if err != nil {
 		t.Fatalf("GetProjectByID failed after update: %v", err)
 	}
 	if updatedProj.Name != "CLI Tools Updated" || updatedProj.Description != "Updated desc" {
 		t.Errorf("unexpected updated project data: %+v", updatedProj)
 	}
-	if err := store.UpdateProject(99999, "None", "None"); !errors.Is(err, ErrProjectNotFound) {
+	if err := store.UpdateProject(context.Background(), 99999, "None", "None"); !errors.Is(err, ErrProjectNotFound) {
 		t.Errorf("expected ErrProjectNotFound for nonexistent ID update, got %v", err)
 	}
 
 	// 2. Add standalone task and project task with title & description
-	taskStandalone, err := store.Add("Standalone Title", "Standalone description", nil, "high")
+	taskStandalone, err := store.Add(context.Background(), "Standalone Title", "Standalone description", nil, "high")
 	if err != nil {
 		t.Fatalf("Add standalone task failed: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("expected status '%s', got %s", StatusPending, taskStandalone.Status)
 	}
 
-	taskProject, err := store.Add("Project Task Title", "Project task details", &project.ID, "medium")
+	taskProject, err := store.Add(context.Background(), "Project Task Title", "Project task details", &project.ID, "medium")
 	if err != nil {
 		t.Fatalf("Add project task failed: %v", err)
 	}
@@ -112,26 +113,26 @@ func TestStoreOperations(t *testing.T) {
 	}
 
 	// 3. Update task title and description
-	if err := store.Update(taskStandalone.ID, "New Standalone Title", "New description"); err != nil {
+	if err := store.Update(context.Background(), taskStandalone.ID, "New Standalone Title", "New description"); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
 
 	// Update task details (change priority)
-	if err := store.UpdateTaskDetails(taskStandalone.ID, "New Standalone Title", "New description", nil, "low"); err != nil {
+	if err := store.UpdateTaskDetails(context.Background(), taskStandalone.ID, "New Standalone Title", "New description", nil, "low"); err != nil {
 		t.Fatalf("UpdateTaskDetails failed: %v", err)
 	}
 
 	// Update priority via UpdatePriority
-	if err := store.UpdatePriority(taskStandalone.ID, "urgent"); err != nil {
+	if err := store.UpdatePriority(context.Background(), taskStandalone.ID, "urgent"); err != nil {
 		t.Fatalf("UpdatePriority failed: %v", err)
 	}
-	checkPrioTask, err := store.GetTaskByID(taskStandalone.ID)
+	checkPrioTask, err := store.GetTaskByID(context.Background(), taskStandalone.ID)
 	if err != nil || checkPrioTask.Priority != "urgent" {
 		t.Fatalf("expected priority 'urgent', got %s (err: %v)", checkPrioTask.Priority, err)
 	}
 
 	// 4. List active tasks
-	tasks, err := store.List("", "")
+	tasks, err := store.List(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
@@ -143,7 +144,7 @@ func TestStoreOperations(t *testing.T) {
 	}
 
 	// List filtered by project code
-	projectTasks, err := store.List("", "CLI")
+	projectTasks, err := store.List(context.Background(), "", "CLI")
 	if err != nil {
 		t.Fatalf("List by project failed: %v", err)
 	}
@@ -152,7 +153,7 @@ func TestStoreOperations(t *testing.T) {
 	}
 
 	// List filtered by project ID
-	projectTasksByID, err := store.List("", fmt.Sprintf("%d", project.ID))
+	projectTasksByID, err := store.List(context.Background(), "", fmt.Sprintf("%d", project.ID))
 	if err != nil {
 		t.Fatalf("List by project ID failed: %v", err)
 	}
@@ -162,11 +163,11 @@ func TestStoreOperations(t *testing.T) {
 
 	// 5. Update status with abort reason
 	reason := "Scope changed"
-	if err := store.UpdateStatus(taskProject.ID, StatusAborted, &reason); err != nil {
+	if err := store.UpdateStatus(context.Background(), taskProject.ID, StatusAborted, &reason); err != nil {
 		t.Fatalf("UpdateStatus abort failed: %v", err)
 	}
 
-	abortedTasks, err := store.List(string(StatusAborted), "")
+	abortedTasks, err := store.List(context.Background(), string(StatusAborted), "")
 	if err != nil {
 		t.Fatalf("List aborted tasks failed: %v", err)
 	}
@@ -178,7 +179,7 @@ func TestStoreOperations(t *testing.T) {
 	}
 
 	// Verify querying with legacy 'abort' string also works
-	legacyList, err := store.List("abort", "")
+	legacyList, err := store.List(context.Background(), "abort", "")
 	if err != nil {
 		t.Fatalf("List with legacy 'abort' filter failed: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestStoreOperations(t *testing.T) {
 	}
 
 	// 6. GetTaskByID
-	foundTask, err := store.GetTaskByID(taskProject.ID)
+	foundTask, err := store.GetTaskByID(context.Background(), taskProject.ID)
 	if err != nil {
 		t.Fatalf("GetTaskByID failed: %v", err)
 	}
@@ -196,11 +197,11 @@ func TestStoreOperations(t *testing.T) {
 	}
 
 	// 7. Soft delete
-	if err := store.Delete(taskStandalone.ID); err != nil {
+	if err := store.Delete(context.Background(), taskStandalone.ID); err != nil {
 		t.Fatalf("Delete (soft delete) failed: %v", err)
 	}
 
-	if _, err := store.GetTaskByID(taskStandalone.ID); !errors.Is(err, ErrTaskNotFound) {
+	if _, err := store.GetTaskByID(context.Background(), taskStandalone.ID); !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound for soft-deleted task, got: %v", err)
 	}
 
@@ -218,7 +219,7 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("expected non-nil deleted_at timestamp")
 	}
 
-	activeTasks, err := store.List("", "")
+	activeTasks, err := store.List(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("List after soft delete failed: %v", err)
 	}
@@ -228,12 +229,12 @@ func TestStoreOperations(t *testing.T) {
 
 	// 8. Documents operations
 	// Adding document to soft-deleted task should fail
-	if _, err := store.AddDocument(taskStandalone.ID, "spec.pdf", "pdf", "/tmp/spec.pdf"); !errors.Is(err, ErrTaskNotFound) {
+	if _, err := store.AddDocument(context.Background(), taskStandalone.ID, "spec.pdf", "pdf", "/tmp/spec.pdf"); !errors.Is(err, ErrTaskNotFound) {
 		t.Fatalf("expected ErrTaskNotFound when adding doc to soft-deleted task, got: %v", err)
 	}
 
 	// Add document to active task
-	doc1, err := store.AddDocument(taskProject.ID, "spec.pdf", "pdf", "/home/user/spec.pdf")
+	doc1, err := store.AddDocument(context.Background(), taskProject.ID, "spec.pdf", "pdf", "/home/user/spec.pdf")
 	if err != nil {
 		t.Fatalf("AddDocument failed: %v", err)
 	}
@@ -241,13 +242,13 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("unexpected document data: %+v", doc1)
 	}
 
-	doc2, err := store.AddDocument(taskProject.ID, "diagram.png", "image/png", "/home/user/diagram.png")
+	doc2, err := store.AddDocument(context.Background(), taskProject.ID, "diagram.png", "image/png", "/home/user/diagram.png")
 	if err != nil {
 		t.Fatalf("AddDocument 2 failed: %v", err)
 	}
 
 	// List documents
-	docs, err := store.ListDocuments(taskProject.ID)
+	docs, err := store.ListDocuments(context.Background(), taskProject.ID)
 	if err != nil {
 		t.Fatalf("ListDocuments failed: %v", err)
 	}
@@ -256,7 +257,7 @@ func TestStoreOperations(t *testing.T) {
 	}
 
 	// GetDocumentByID
-	foundDoc, err := store.GetDocumentByID(doc1.ID)
+	foundDoc, err := store.GetDocumentByID(context.Background(), doc1.ID)
 	if err != nil {
 		t.Fatalf("GetDocumentByID failed: %v", err)
 	}
@@ -264,18 +265,18 @@ func TestStoreOperations(t *testing.T) {
 		t.Errorf("expected doc matching %+v, got %+v", doc1, foundDoc)
 	}
 
-	if _, err := store.GetDocumentByID(99999); !errors.Is(err, ErrDocumentNotFound) {
+	if _, err := store.GetDocumentByID(context.Background(), 99999); !errors.Is(err, ErrDocumentNotFound) {
 		t.Fatalf("expected ErrDocumentNotFound, got %v", err)
 	}
 
 	// Delete document
-	if err := store.DeleteDocument(doc1.ID); err != nil {
+	if err := store.DeleteDocument(context.Background(), doc1.ID); err != nil {
 		t.Fatalf("DeleteDocument failed: %v", err)
 	}
-	if _, err := store.GetDocumentByID(doc1.ID); !errors.Is(err, ErrDocumentNotFound) {
+	if _, err := store.GetDocumentByID(context.Background(), doc1.ID); !errors.Is(err, ErrDocumentNotFound) {
 		t.Fatalf("expected ErrDocumentNotFound after deletion, got %v", err)
 	}
-	docsAfterDel, err := store.ListDocuments(taskProject.ID)
+	docsAfterDel, err := store.ListDocuments(context.Background(), taskProject.ID)
 	if err != nil {
 		t.Fatalf("ListDocuments after delete failed: %v", err)
 	}
@@ -319,7 +320,7 @@ func TestLegacyMigration(t *testing.T) {
 	}
 	defer reopenedStore.Close()
 
-	tasks, err := reopenedStore.List("", "")
+	tasks, err := reopenedStore.List(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("failed to list tasks: %v", err)
 	}
@@ -358,94 +359,94 @@ func TestImmutableTasks_AbortedAndDeleted(t *testing.T) {
 	defer store.Close()
 
 	// 1. Aborted task cannot change status or be updated
-	task1, err := store.Add("Task 1", "Desc 1", nil, "medium")
+	task1, err := store.Add(context.Background(), "Task 1", "Desc 1", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to add task 1: %v", err)
 	}
 	abortReason := "Requirements dropped"
-	if err := store.UpdateStatus(task1.ID, StatusAborted, &abortReason); err != nil {
+	if err := store.UpdateStatus(context.Background(), task1.ID, StatusAborted, &abortReason); err != nil {
 		t.Fatalf("failed to abort task 1: %v", err)
 	}
 
-	if err := store.CheckTaskMutable(task1.ID); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.CheckTaskMutable(context.Background(), task1.ID); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from CheckTaskMutable, got: %v", err)
 	}
 
 	// Attempt status changes on aborted task
 	for _, targetStatus := range []Status{StatusPending, StatusInProgress, StatusDone, StatusAborted} {
-		err := store.UpdateStatus(task1.ID, targetStatus, nil)
+		err := store.UpdateStatus(context.Background(), task1.ID, targetStatus, nil)
 		if !errors.Is(err, ErrTaskImmutable) {
 			t.Errorf("expected ErrTaskImmutable when changing aborted task to %s, got: %v", targetStatus, err)
 		}
 	}
 
 	// Attempt updates on aborted task
-	if err := store.Update(task1.ID, "New Title", "New Desc"); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.Update(context.Background(), task1.ID, "New Title", "New Desc"); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from Update on aborted task, got: %v", err)
 	}
-	if err := store.UpdateTaskDetails(task1.ID, "New Title", "New Desc", nil, "high"); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.UpdateTaskDetails(context.Background(), task1.ID, "New Title", "New Desc", nil, "high"); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from UpdateTaskDetails on aborted task, got: %v", err)
 	}
-	if err := store.UpdateDescription(task1.ID, "New Desc"); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.UpdateDescription(context.Background(), task1.ID, "New Desc"); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from UpdateDescription on aborted task, got: %v", err)
 	}
-	if err := store.UpdatePriority(task1.ID, "urgent"); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.UpdatePriority(context.Background(), task1.ID, "urgent"); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from UpdatePriority on aborted task, got: %v", err)
 	}
 
 	// 2. Deleted task cannot change status or be updated
-	task2, err := store.Add("Task 2", "Desc 2", nil, "low")
+	task2, err := store.Add(context.Background(), "Task 2", "Desc 2", nil, "low")
 	if err != nil {
 		t.Fatalf("failed to add task 2: %v", err)
 	}
-	if err := store.Delete(task2.ID); err != nil {
+	if err := store.Delete(context.Background(), task2.ID); err != nil {
 		t.Fatalf("failed to delete task 2: %v", err)
 	}
 
-	if err := store.CheckTaskMutable(task2.ID); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.CheckTaskMutable(context.Background(), task2.ID); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from CheckTaskMutable on deleted task, got: %v", err)
 	}
 
 	// Attempt status changes on deleted task
 	for _, targetStatus := range []Status{StatusPending, StatusInProgress, StatusDone, StatusAborted} {
-		err := store.UpdateStatus(task2.ID, targetStatus, nil)
+		err := store.UpdateStatus(context.Background(), task2.ID, targetStatus, nil)
 		if !errors.Is(err, ErrTaskImmutable) {
 			t.Errorf("expected ErrTaskImmutable when changing deleted task to %s, got: %v", targetStatus, err)
 		}
 	}
 
 	// Attempt updates on deleted task
-	if err := store.Update(task2.ID, "New Title", "New Desc"); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.Update(context.Background(), task2.ID, "New Title", "New Desc"); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from Update on deleted task, got: %v", err)
 	}
-	if err := store.UpdateTaskDetails(task2.ID, "New Title", "New Desc", nil, "high"); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.UpdateTaskDetails(context.Background(), task2.ID, "New Title", "New Desc", nil, "high"); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from UpdateTaskDetails on deleted task, got: %v", err)
 	}
-	if err := store.UpdateDescription(task2.ID, "New Desc"); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.UpdateDescription(context.Background(), task2.ID, "New Desc"); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from UpdateDescription on deleted task, got: %v", err)
 	}
-	if err := store.UpdatePriority(task2.ID, "urgent"); !errors.Is(err, ErrTaskImmutable) {
+	if err := store.UpdatePriority(context.Background(), task2.ID, "urgent"); !errors.Is(err, ErrTaskImmutable) {
 		t.Errorf("expected ErrTaskImmutable from UpdatePriority on deleted task, got: %v", err)
 	}
 
 	// 3. Non-existent task returns ErrTaskNotFound
 	nonExistentID := int64(99999)
-	if err := store.CheckTaskMutable(nonExistentID); !errors.Is(err, ErrTaskNotFound) {
+	if err := store.CheckTaskMutable(context.Background(), nonExistentID); !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound from CheckTaskMutable, got: %v", err)
 	}
-	if err := store.UpdateStatus(nonExistentID, StatusDone, nil); !errors.Is(err, ErrTaskNotFound) {
+	if err := store.UpdateStatus(context.Background(), nonExistentID, StatusDone, nil); !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound from UpdateStatus, got: %v", err)
 	}
-	if err := store.Update(nonExistentID, "Title", "Desc"); !errors.Is(err, ErrTaskNotFound) {
+	if err := store.Update(context.Background(), nonExistentID, "Title", "Desc"); !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound from Update, got: %v", err)
 	}
-	if err := store.UpdateTaskDetails(nonExistentID, "Title", "Desc", nil, "low"); !errors.Is(err, ErrTaskNotFound) {
+	if err := store.UpdateTaskDetails(context.Background(), nonExistentID, "Title", "Desc", nil, "low"); !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound from UpdateTaskDetails, got: %v", err)
 	}
-	if err := store.UpdateDescription(nonExistentID, "Desc"); !errors.Is(err, ErrTaskNotFound) {
+	if err := store.UpdateDescription(context.Background(), nonExistentID, "Desc"); !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound from UpdateDescription, got: %v", err)
 	}
-	if err := store.UpdatePriority(nonExistentID, "high"); !errors.Is(err, ErrTaskNotFound) {
+	if err := store.UpdatePriority(context.Background(), nonExistentID, "high"); !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound from UpdatePriority, got: %v", err)
 	}
 }
@@ -493,7 +494,7 @@ func TestListAllDocumentPaths(t *testing.T) {
 	defer store.Close()
 
 	// Initially empty
-	paths, err := store.ListAllDocumentPaths()
+	paths, err := store.ListAllDocumentPaths(context.Background())
 	if err != nil {
 		t.Fatalf("ListAllDocumentPaths failed on empty db: %v", err)
 	}
@@ -502,50 +503,50 @@ func TestListAllDocumentPaths(t *testing.T) {
 	}
 
 	// Create tasks
-	task1, err := store.Add("Task 1 (Active)", "Desc 1", nil, "medium")
+	task1, err := store.Add(context.Background(), "Task 1 (Active)", "Desc 1", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to add task 1: %v", err)
 	}
-	task2, err := store.Add("Task 2 (To be deleted)", "Desc 2", nil, "low")
+	task2, err := store.Add(context.Background(), "Task 2 (To be deleted)", "Desc 2", nil, "low")
 	if err != nil {
 		t.Fatalf("failed to add task 2: %v", err)
 	}
-	task3, err := store.Add("Task 3 (Aborted)", "Desc 3", nil, "high")
+	task3, err := store.Add(context.Background(), "Task 3 (Aborted)", "Desc 3", nil, "high")
 	if err != nil {
 		t.Fatalf("failed to add task 3: %v", err)
 	}
 
 	// Add documents
-	_, err = store.AddDocument(task1.ID, "doc1", "pdf", "/storage/attachments/1/doc1.pdf")
+	_, err = store.AddDocument(context.Background(), task1.ID, "doc1", "pdf", "/storage/attachments/1/doc1.pdf")
 	if err != nil {
 		t.Fatalf("failed to add doc1: %v", err)
 	}
-	doc2, err := store.AddDocument(task1.ID, "doc2", "png", "/storage/attachments/1/doc2.png")
+	doc2, err := store.AddDocument(context.Background(), task1.ID, "doc2", "png", "/storage/attachments/1/doc2.png")
 	if err != nil {
 		t.Fatalf("failed to add doc2: %v", err)
 	}
-	_, err = store.AddDocument(task2.ID, "doc3", "txt", "/storage/attachments/2/doc3.txt")
+	_, err = store.AddDocument(context.Background(), task2.ID, "doc3", "txt", "/storage/attachments/2/doc3.txt")
 	if err != nil {
 		t.Fatalf("failed to add doc3: %v", err)
 	}
-	_, err = store.AddDocument(task3.ID, "doc4", "md", "/storage/attachments/3/doc4.md")
+	_, err = store.AddDocument(context.Background(), task3.ID, "doc4", "md", "/storage/attachments/3/doc4.md")
 	if err != nil {
 		t.Fatalf("failed to add doc4: %v", err)
 	}
 	// Add an empty/whitespace path to test filtering of empty paths
-	_, err = store.AddDocument(task1.ID, "empty_doc", "bin", "   ")
+	_, err = store.AddDocument(context.Background(), task1.ID, "empty_doc", "bin", "   ")
 	if err != nil {
 		t.Fatalf("failed to add empty doc: %v", err)
 	}
 
 	// Abort task 3 (aborted tasks are active in terms of document retention, not deleted)
 	abortReason := "cancelled"
-	if err := store.UpdateStatus(task3.ID, StatusAborted, &abortReason); err != nil {
+	if err := store.UpdateStatus(context.Background(), task3.ID, StatusAborted, &abortReason); err != nil {
 		t.Fatalf("failed to abort task 3: %v", err)
 	}
 
 	// Check all active before deletions
-	paths, err = store.ListAllDocumentPaths()
+	paths, err = store.ListAllDocumentPaths(context.Background())
 	if err != nil {
 		t.Fatalf("ListAllDocumentPaths failed: %v", err)
 	}
@@ -560,16 +561,16 @@ func TestListAllDocumentPaths(t *testing.T) {
 	}
 
 	// 1. Soft-delete task2 -> its documents should no longer be returned
-	if err := store.Delete(task2.ID); err != nil {
+	if err := store.Delete(context.Background(), task2.ID); err != nil {
 		t.Fatalf("failed to delete task 2: %v", err)
 	}
 
 	// 2. Delete doc2 directly -> should no longer be returned
-	if err := store.DeleteDocument(doc2.ID); err != nil {
+	if err := store.DeleteDocument(context.Background(), doc2.ID); err != nil {
 		t.Fatalf("failed to delete doc2: %v", err)
 	}
 
-	pathsAfter, err := store.ListAllDocumentPaths()
+	pathsAfter, err := store.ListAllDocumentPaths(context.Background())
 	if err != nil {
 		t.Fatalf("ListAllDocumentPaths failed after deletion: %v", err)
 	}
@@ -606,15 +607,15 @@ func TestLegacyDBMigration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create legacy store: %v", err)
 		}
-		proj, err := legacyStore.AddProject("LEGACY", "Legacy Project", "From legacy db")
+		proj, err := legacyStore.AddProject(context.Background(), "LEGACY", "Legacy Project", "From legacy db")
 		if err != nil {
 			t.Fatalf("failed to add legacy project: %v", err)
 		}
-		task, err := legacyStore.Add("Legacy Task", "Legacy Desc", &proj.ID, "high")
+		task, err := legacyStore.Add(context.Background(), "Legacy Task", "Legacy Desc", &proj.ID, "high")
 		if err != nil {
 			t.Fatalf("failed to add legacy task: %v", err)
 		}
-		_, err = legacyStore.AddDocument(task.ID, "legacy_doc", "txt", "/legacy/doc.txt")
+		_, err = legacyStore.AddDocument(context.Background(), task.ID, "legacy_doc", "txt", "/legacy/doc.txt")
 		if err != nil {
 			t.Fatalf("failed to add legacy doc: %v", err)
 		}
@@ -652,7 +653,7 @@ func TestLegacyDBMigration(t *testing.T) {
 		}
 
 		// Verify data in migrated store
-		loadedProj, err := newStore.GetProjectByCode("LEGACY")
+		loadedProj, err := newStore.GetProjectByCode(context.Background(), "LEGACY")
 		if err != nil {
 			t.Fatalf("failed to find migrated project: %v", err)
 		}
@@ -660,7 +661,7 @@ func TestLegacyDBMigration(t *testing.T) {
 			t.Errorf("expected project name 'Legacy Project', got %s", loadedProj.Name)
 		}
 
-		loadedTasks, err := newStore.List("", "LEGACY")
+		loadedTasks, err := newStore.List(context.Background(), "", "LEGACY")
 		if err != nil {
 			t.Fatalf("failed to list migrated tasks: %v", err)
 		}
@@ -668,7 +669,7 @@ func TestLegacyDBMigration(t *testing.T) {
 			t.Fatalf("unexpected migrated tasks: %+v", loadedTasks)
 		}
 
-		docPaths, err := newStore.ListAllDocumentPaths()
+		docPaths, err := newStore.ListAllDocumentPaths(context.Background())
 		if err != nil {
 			t.Fatalf("failed to list doc paths: %v", err)
 		}
@@ -814,51 +815,51 @@ func TestTaskListOrderByProjectCode(t *testing.T) {
 	}
 	defer store.Close()
 
-	projZ, err := store.AddProject("ZETA", "Project Zeta", "")
+	projZ, err := store.AddProject(context.Background(), "ZETA", "Project Zeta", "")
 	if err != nil {
 		t.Fatalf("AddProject ZETA failed: %v", err)
 	}
-	projA, err := store.AddProject("ALPHA", "Project Alpha", "")
+	projA, err := store.AddProject(context.Background(), "ALPHA", "Project Alpha", "")
 	if err != nil {
 		t.Fatalf("AddProject ALPHA failed: %v", err)
 	}
-	projB, err := store.AddProject("BETA", "Project Beta", "")
+	projB, err := store.AddProject(context.Background(), "BETA", "Project Beta", "")
 	if err != nil {
 		t.Fatalf("AddProject BETA failed: %v", err)
 	}
 
 	// 1. Task in ZETA
-	t1, err := store.Add("Task Zeta 1", "", &projZ.ID, "medium")
+	t1, err := store.Add(context.Background(), "Task Zeta 1", "", &projZ.ID, "medium")
 	if err != nil {
 		t.Fatalf("Add task 1 failed: %v", err)
 	}
 	// 2. Standalone task without project
-	t2, err := store.Add("Task Standalone 1", "", nil, "medium")
+	t2, err := store.Add(context.Background(), "Task Standalone 1", "", nil, "medium")
 	if err != nil {
 		t.Fatalf("Add task 2 failed: %v", err)
 	}
 	// 3. Task in ALPHA
-	t3, err := store.Add("Task Alpha 1", "", &projA.ID, "medium")
+	t3, err := store.Add(context.Background(), "Task Alpha 1", "", &projA.ID, "medium")
 	if err != nil {
 		t.Fatalf("Add task 3 failed: %v", err)
 	}
 	// 4. Task in BETA
-	t4, err := store.Add("Task Beta 1", "", &projB.ID, "medium")
+	t4, err := store.Add(context.Background(), "Task Beta 1", "", &projB.ID, "medium")
 	if err != nil {
 		t.Fatalf("Add task 4 failed: %v", err)
 	}
 	// 5. Another task in ALPHA
-	t5, err := store.Add("Task Alpha 2", "", &projA.ID, "medium")
+	t5, err := store.Add(context.Background(), "Task Alpha 2", "", &projA.ID, "medium")
 	if err != nil {
 		t.Fatalf("Add task 5 failed: %v", err)
 	}
 	// 6. Another standalone task
-	t6, err := store.Add("Task Standalone 2", "", nil, "medium")
+	t6, err := store.Add(context.Background(), "Task Standalone 2", "", nil, "medium")
 	if err != nil {
 		t.Fatalf("Add task 6 failed: %v", err)
 	}
 
-	tasks, err := store.List("", "")
+	tasks, err := store.List(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("store.List failed: %v", err)
 	}
@@ -876,3 +877,18 @@ func TestTaskListOrderByProjectCode(t *testing.T) {
 	}
 }
 
+func TestStoreContextCancellation(t *testing.T) {
+	tempDir := t.TempDir()
+	store, err := NewStore(filepath.Join(tempDir, "cancel.db"))
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := store.List(ctx, "", ""); err == nil {
+		t.Fatal("expected context cancellation error, got nil")
+	}
+}

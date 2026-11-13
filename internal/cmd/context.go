@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -111,6 +112,7 @@ func ResolveContext(args []string) (*Context, []string, func(), error) {
 	ctx := &Context{
 		DBPath: gf.DBPath,
 		Format: gf.Format,
+		Ctx:    context.Background(),
 	}
 
 	// Commands that do not require database connection

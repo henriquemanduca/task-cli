@@ -1,7 +1,7 @@
 package cmd
 
-// FlatAliases maps legacy flat command names and shortcuts to their hierarchical routes in Root.
-var FlatAliases = map[string][]string{
+// flatAliases maps legacy flat command names and shortcuts to their hierarchical routes.
+var flatAliases = map[string][]string{
 	// Projects
 	"np":             {"project", "add"},
 	"project-add":    {"project", "add"},
@@ -59,11 +59,11 @@ var FlatAliases = map[string][]string{
 	"imp":    {"import"},
 }
 
-// ResolveFlatAlias checks if the given alias exists in FlatAliases.
+// ResolveFlatAlias checks if the given alias exists in flatAliases.
 // If found, it returns a clone of the target hierarchical path and true;
 // otherwise, it returns nil and false.
 func ResolveFlatAlias(alias string) ([]string, bool) {
-	target, ok := FlatAliases[alias]
+	target, ok := flatAliases[alias]
 	if !ok {
 		return nil, false
 	}

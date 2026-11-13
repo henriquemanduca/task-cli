@@ -21,10 +21,6 @@ const MaxCopySize int64 = 100 * 1024 * 1024
 // on the current platform or filesystem.
 var ErrUnsupported = errors.New("reflink unsupported")
 
-// maxCopyThreshold holds the effective copy size limit; defaults to MaxCopySize,
-// but can be adjusted during testing.
-var maxCopyThreshold = MaxCopySize
-
 // FileShortHash computes the SHA-256 hash of the file at filePath and returns
 // its first 8 hexadecimal characters.
 func FileShortHash(filePath string) (string, error) {
@@ -62,28 +58,24 @@ func cloneFileOrCopy(srcPath, dstPath string) error {
 	}
 	defer dst.Close()
 
-	// Try copy-on-write reflink first
+	// Try copy-on-write reflink first.
 	if err := cloneFile(src, dst); err == nil {
-		_ = dst.Sync()
+		if err := dst.Sync(); err != nil {
+			return fmt.Errorf("failed to sync destination file: %w", err)
+		}
 		return nil
 	}
 
-	// Reflink failed or unsupported: rewind and fallback to standard streaming copy
+	// Reflink failed or unsupported: discard any partial clone and fall back
+	// to a standard streaming copy on the same descriptors.
+	if err := dst.Truncate(0); err != nil {
+		return fmt.Errorf("failed to truncate destination file: %w", err)
+	}
 	if _, err := src.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("failed to rewind source file: %w", err)
 	}
 	if _, err := dst.Seek(0, io.SeekStart); err != nil {
-		// File descriptor might have been invalidated, reopen
-		_ = dst.Close()
-		dst, err = os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			return fmt.Errorf("failed to reopen destination file: %w", err)
-		}
-		defer dst.Close()
-	} else {
-		if err := dst.Truncate(0); err != nil {
-			return fmt.Errorf("failed to truncate destination file: %w", err)
-		}
+		return fmt.Errorf("failed to rewind destination file: %w", err)
 	}
 
 	if _, err := io.Copy(dst, src); err != nil {
@@ -112,6 +104,10 @@ func cloneFileOrCopy(srcPath, dstPath string) error {
 //   - Atomically renames temporary file to final path.
 //   - Returns (finalPath, true, nil).
 func SaveAttachment(srcPath string, taskID int64, forceCopy, forceLink bool) (savedPath string, copied bool, err error) {
+	return saveAttachment(srcPath, taskID, forceCopy, forceLink, MaxCopySize)
+}
+
+func saveAttachment(srcPath string, taskID int64, forceCopy, forceLink bool, maxCopyThreshold int64) (savedPath string, copied bool, err error) {
 	st, err := os.Stat(srcPath)
 	if err != nil {
 		return "", false, fmt.Errorf("source file %q not found or inaccessible: %w", srcPath, err)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"io"
 	"os"
 
@@ -16,6 +17,15 @@ type Context struct {
 	Out    io.Writer
 	Stderr io.Writer
 	Config *config.Config
+	Ctx    context.Context
+}
+
+// Context returns the command's context, defaulting to context.Background.
+func (c *Context) Context() context.Context {
+	if c != nil && c.Ctx != nil {
+		return c.Ctx
+	}
+	return context.Background()
 }
 
 // DefaultProject returns the project code configured for the workspace, if any.
@@ -47,16 +57,16 @@ func (c *Context) ErrWriter() io.Writer {
 // CommandFunc defines the function signature for subcommands.
 type CommandFunc func(ctx *Context, args []string) error
 
-// Execute routes a command to its registered handler via flat alias or hierarchical Root router.
-func Execute(ctx *Context, command string, args []string) (bool, error) {
-	if Root != nil {
+// Execute routes a command to its registered handler via flat alias or hierarchical router.
+func Execute(root *Command, ctx *Context, command string, args []string) (bool, error) {
+	if root != nil {
 		if targetPath, ok := ResolveFlatAlias(command); ok {
-			return true, Root.Execute(ctx, append(targetPath, args...))
+			return true, root.Execute(ctx, append(targetPath, args...))
 		}
 
-		target := Root.FindSubcommand(command)
+		target := root.FindSubcommand(command)
 		if target != nil {
-			return true, Root.Execute(ctx, append([]string{command}, args...))
+			return true, root.Execute(ctx, append([]string{command}, args...))
 		}
 	}
 

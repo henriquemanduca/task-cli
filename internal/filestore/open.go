@@ -13,11 +13,6 @@ import (
 
 type openerFunc func(name string, args ...string) error
 
-var (
-	runOpener   openerFunc = defaultRunOpener
-	currentGOOS            = runtime.GOOS
-)
-
 func defaultRunOpener(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = io.Discard
@@ -45,17 +40,17 @@ func hasGraphicDisplay() bool {
 // If running in a headless environment, or if the opener command fails,
 // it falls back to returning the exact absolute path with a trailing newline.
 func OpenFolder(path string) (stdoutOutput string, err error) {
-	return openPath(path, false)
+	return openPath(path, false, runtime.GOOS, defaultRunOpener)
 }
 
 // OpenFile opens or reveals a file in the desktop file manager.
 // If running in a headless environment, or if the opener command fails,
 // it falls back to returning the exact absolute path with a trailing newline.
 func OpenFile(path string) (stdoutOutput string, err error) {
-	return openPath(path, true)
+	return openPath(path, true, runtime.GOOS, defaultRunOpener)
 }
 
-func openPath(path string, isFile bool) (string, error) {
+func openPath(path string, isFile bool, goos string, opener openerFunc) (string, error) {
 	if path == "" {
 		return "", errors.New("path cannot be empty")
 	}
@@ -71,12 +66,12 @@ func openPath(path string, isFile bool) (string, error) {
 
 	fallbackOutput := fmt.Sprintf("%s\n", absPath)
 
-	switch currentGOOS {
+	switch goos {
 	case "linux":
 		if !hasGraphicDisplay() {
 			return fallbackOutput, nil
 		}
-		if err := runOpener("xdg-open", absPath); err != nil {
+		if err := opener("xdg-open", absPath); err != nil {
 			return fallbackOutput, nil
 		}
 		return "", nil
@@ -86,7 +81,7 @@ func openPath(path string, isFile bool) (string, error) {
 		if isFile {
 			args = []string{"-R", absPath}
 		}
-		if err := runOpener("open", args...); err != nil {
+		if err := opener("open", args...); err != nil {
 			return fallbackOutput, nil
 		}
 		return "", nil
@@ -96,14 +91,14 @@ func openPath(path string, isFile bool) (string, error) {
 		if isFile {
 			target = "/select," + absPath
 		}
-		if err := runOpener("explorer.exe", target); err != nil {
+		if err := opener("explorer.exe", target); err != nil {
 			return fallbackOutput, nil
 		}
 		return "", nil
 
 	default:
 		if hasGraphicDisplay() {
-			if err := runOpener("xdg-open", absPath); err == nil {
+			if err := opener("xdg-open", absPath); err == nil {
 				return "", nil
 			}
 		}

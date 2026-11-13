@@ -25,7 +25,7 @@ func TestTaskDefaultsFromWorkspaceConfig(t *testing.T) {
 	if err := TaskAdd(ctx, []string{"Configured task"}); err != nil {
 		t.Fatalf("unexpected error adding task with configured project: %v", err)
 	}
-	task, err := ctx.Store.GetTaskByID(1)
+	task, err := ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if err != nil {
 		t.Fatalf("failed to retrieve task 1: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestTaskDefaultsFromWorkspaceConfig(t *testing.T) {
 	if err := TaskAdd(ctx, []string{"-p", "2", "Explicit task"}); err != nil {
 		t.Fatalf("unexpected error adding task with explicit project: %v", err)
 	}
-	task, err = ctx.Store.GetTaskByID(2)
+	task, err = ctx.Store.GetTaskByID(ctx.Context(), 2)
 	if err != nil {
 		t.Fatalf("failed to retrieve task 2: %v", err)
 	}

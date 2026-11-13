@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -35,76 +36,76 @@ func TestStoreExportData(t *testing.T) {
 	defer cleanup()
 
 	// 1. Create Projects
-	projA, err := store.AddProject("PROJ_A", "Project Alpha", "First test project")
+	projA, err := store.AddProject(context.Background(), "PROJ_A", "Project Alpha", "First test project")
 	if err != nil {
 		t.Fatalf("failed to create projA: %v", err)
 	}
-	projB, err := store.AddProject("PROJ_B", "Project Beta", "Second test project")
+	projB, err := store.AddProject(context.Background(), "PROJ_B", "Project Beta", "Second test project")
 	if err != nil {
 		t.Fatalf("failed to create projB: %v", err)
 	}
 
 	// 2. Create Tasks for Project A
-	tA1, err := store.Add("Task A1", "Description A1", &projA.ID, "high")
+	tA1, err := store.Add(context.Background(), "Task A1", "Description A1", &projA.ID, "high")
 	if err != nil {
 		t.Fatalf("failed to add task A1: %v", err)
 	}
 	// Add documents to tA1
-	doc1, err := store.AddDocument(tA1.ID, "Specification", "pdf", "/files/spec.pdf")
+	doc1, err := store.AddDocument(context.Background(), tA1.ID, "Specification", "pdf", "/files/spec.pdf")
 	if err != nil {
 		t.Fatalf("failed to add doc1: %v", err)
 	}
-	doc2, err := store.AddDocument(tA1.ID, "Notes", "txt", "/files/notes.txt")
+	doc2, err := store.AddDocument(context.Background(), tA1.ID, "Notes", "txt", "/files/notes.txt")
 	if err != nil {
 		t.Fatalf("failed to add doc2: %v", err)
 	}
 
-	tA2, err := store.Add("Task A2", "Description A2", &projA.ID, "medium")
+	tA2, err := store.Add(context.Background(), "Task A2", "Description A2", &projA.ID, "medium")
 	if err != nil {
 		t.Fatalf("failed to add task A2: %v", err)
 	}
-	if err := store.UpdateStatus(tA2.ID, StatusDone, nil); err != nil {
+	if err := store.UpdateStatus(context.Background(), tA2.ID, StatusDone, nil); err != nil {
 		t.Fatalf("failed to set task A2 to done: %v", err)
 	}
 
-	tA3, err := store.Add("Task A3", "Description A3", &projA.ID, "urgent")
+	tA3, err := store.Add(context.Background(), "Task A3", "Description A3", &projA.ID, "urgent")
 	if err != nil {
 		t.Fatalf("failed to add task A3: %v", err)
 	}
-	if err := store.Delete(tA3.ID); err != nil {
+	if err := store.Delete(context.Background(), tA3.ID); err != nil {
 		t.Fatalf("failed to soft delete task A3: %v", err)
 	}
 
 	// 3. Create Tasks for Project B
-	tB1, err := store.Add("Task B1", "Description B1", &projB.ID, "low")
+	tB1, err := store.Add(context.Background(), "Task B1", "Description B1", &projB.ID, "low")
 	if err != nil {
 		t.Fatalf("failed to add task B1: %v", err)
 	}
 	reason := "Requirements cancelled"
-	if err := store.UpdateStatus(tB1.ID, StatusAborted, &reason); err != nil {
+	if err := store.UpdateStatus(context.Background(), tB1.ID, StatusAborted, &reason); err != nil {
 		t.Fatalf("failed to set task B1 to abort: %v", err)
 	}
 
 	// 4. Create Standalone Tasks
-	tS1, err := store.Add("Standalone Task 1", "Desc S1", nil, "medium")
+	tS1, err := store.Add(context.Background(), "Standalone Task 1", "Desc S1", nil, "medium")
 	if err != nil {
 		t.Fatalf("failed to add standalone task 1: %v", err)
 	}
-	doc3, err := store.AddDocument(tS1.ID, "Standalone Doc", "md", "/files/readme.md")
+	doc3, err := store.AddDocument(context.Background(), tS1.ID, "Standalone Doc", "md", "/files/readme.md")
 	if err != nil {
 		t.Fatalf("failed to add doc3: %v", err)
 	}
 
-	tS2, err := store.Add("Standalone Task 2", "Desc S2", nil, "low")
+	tS2, err := store.Add(context.Background(), "Standalone Task 2", "Desc S2", nil, "low")
 	if err != nil {
 		t.Fatalf("failed to add standalone task 2: %v", err)
 	}
-	if err := store.Delete(tS2.ID); err != nil {
+	if err := store.Delete(context.Background(), tS2.ID); err != nil {
 		t.Fatalf("failed to delete standalone task 2: %v", err)
 	}
 
 	t.Run("Full export default options", func(t *testing.T) {
-		data, err := store.ExportData(ExportOptions{})
+		data, err := store.ExportData(context.Background(), ExportOptions{})
 		if err != nil {
 			t.Fatalf("ExportData failed: %v", err)
 		}
@@ -160,7 +161,7 @@ func TestStoreExportData(t *testing.T) {
 	})
 
 	t.Run("Export filtered by project code", func(t *testing.T) {
-		data, err := store.ExportData(ExportOptions{ProjectCode: "PROJ_A"})
+		data, err := store.ExportData(context.Background(), ExportOptions{ProjectCode: "PROJ_A"})
 		if err != nil {
 			t.Fatalf("ExportData failed: %v", err)
 		}
@@ -176,14 +177,14 @@ func TestStoreExportData(t *testing.T) {
 	})
 
 	t.Run("Export filtered by non-existent project", func(t *testing.T) {
-		_, err := store.ExportData(ExportOptions{ProjectCode: "UNKNOWN"})
+		_, err := store.ExportData(context.Background(), ExportOptions{ProjectCode: "UNKNOWN"})
 		if !errors.Is(err, ErrProjectNotFound) {
 			t.Errorf("expected ErrProjectNotFound, got %v", err)
 		}
 	})
 
 	t.Run("Export filtered by status", func(t *testing.T) {
-		data, err := store.ExportData(ExportOptions{Status: "pending"})
+		data, err := store.ExportData(context.Background(), ExportOptions{Status: "pending"})
 		if err != nil {
 			t.Fatalf("ExportData failed: %v", err)
 		}
@@ -203,7 +204,7 @@ func TestStoreExportData(t *testing.T) {
 	})
 
 	t.Run("Export with include deleted", func(t *testing.T) {
-		data, err := store.ExportData(ExportOptions{IncludeDeleted: true})
+		data, err := store.ExportData(context.Background(), ExportOptions{IncludeDeleted: true})
 		if err != nil {
 			t.Fatalf("ExportData failed: %v", err)
 		}
@@ -300,7 +301,7 @@ func TestStoreImportData(t *testing.T) {
 			},
 		}
 
-		res, err := store.ImportData(fixture, ImportOptions{})
+		res, err := store.ImportData(context.Background(), fixture, ImportOptions{})
 		if err != nil {
 			t.Fatalf("ImportData failed: %v", err)
 		}
@@ -319,7 +320,7 @@ func TestStoreImportData(t *testing.T) {
 		}
 
 		// Verify in DB
-		p, err := store.GetProjectByCode("IMP")
+		p, err := store.GetProjectByCode(context.Background(), "IMP")
 		if err != nil {
 			t.Fatalf("GetProjectByCode failed: %v", err)
 		}
@@ -327,7 +328,7 @@ func TestStoreImportData(t *testing.T) {
 			t.Errorf("expected project name 'Imported Project', got %s", p.Name)
 		}
 
-		tasks, err := store.List("", "IMP")
+		tasks, err := store.List(context.Background(), "", "IMP")
 		if err != nil {
 			t.Fatalf("List failed: %v", err)
 		}
@@ -335,7 +336,7 @@ func TestStoreImportData(t *testing.T) {
 			t.Fatalf("expected 2 tasks in project IMP, got %d", len(tasks))
 		}
 
-		standaloneTasks, err := store.List("", "")
+		standaloneTasks, err := store.List(context.Background(), "", "")
 		if err != nil {
 			t.Fatalf("List failed: %v", err)
 		}
@@ -351,7 +352,7 @@ func TestStoreImportData(t *testing.T) {
 				break
 			}
 		}
-		docs, err := store.ListDocuments(task1ID)
+		docs, err := store.ListDocuments(context.Background(), task1ID)
 		if err != nil {
 			t.Fatalf("ListDocuments failed: %v", err)
 		}
@@ -365,7 +366,7 @@ func TestStoreImportData(t *testing.T) {
 		defer cleanup()
 
 		// Pre-populate project
-		_, err := store.AddProject("DUP", "Original Name", "Original Description")
+		_, err := store.AddProject(context.Background(), "DUP", "Original Name", "Original Description")
 		if err != nil {
 			t.Fatalf("AddProject failed: %v", err)
 		}
@@ -390,7 +391,7 @@ func TestStoreImportData(t *testing.T) {
 		}
 
 		// 1. Without Overwrite: project metadata should NOT change, but task should be imported
-		resSkip, err := store.ImportData(fixture, ImportOptions{Overwrite: false})
+		resSkip, err := store.ImportData(context.Background(), fixture, ImportOptions{Overwrite: false})
 		if err != nil {
 			t.Fatalf("ImportData without overwrite failed: %v", err)
 		}
@@ -404,7 +405,7 @@ func TestStoreImportData(t *testing.T) {
 			t.Errorf("expected 1 task imported, got %d", resSkip.TasksImported)
 		}
 
-		proj, err := store.GetProjectByCode("DUP")
+		proj, err := store.GetProjectByCode(context.Background(), "DUP")
 		if err != nil {
 			t.Fatalf("GetProjectByCode failed: %v", err)
 		}
@@ -415,7 +416,7 @@ func TestStoreImportData(t *testing.T) {
 		// 2. With Overwrite: project metadata should update
 		fixture.Projects[0].Name = "Updated Name"
 		fixture.Projects[0].Description = "Updated Description"
-		resOverwrite, err := store.ImportData(fixture, ImportOptions{Overwrite: true})
+		resOverwrite, err := store.ImportData(context.Background(), fixture, ImportOptions{Overwrite: true})
 		if err != nil {
 			t.Fatalf("ImportData with overwrite failed: %v", err)
 		}
@@ -426,7 +427,7 @@ func TestStoreImportData(t *testing.T) {
 			t.Errorf("expected 0 projects skipped, got %d", resOverwrite.ProjectsSkipped)
 		}
 
-		projUpdated, err := store.GetProjectByCode("DUP")
+		projUpdated, err := store.GetProjectByCode(context.Background(), "DUP")
 		if err != nil {
 			t.Fatalf("GetProjectByCode failed: %v", err)
 		}
@@ -456,7 +457,7 @@ func TestStoreImportData(t *testing.T) {
 		}
 
 		// Default (ForceDocs = false): second document with same file_path should be skipped
-		res, err := store.ImportData(fixtureWithDuplicates, ImportOptions{ForceDocs: false})
+		res, err := store.ImportData(context.Background(), fixtureWithDuplicates, ImportOptions{ForceDocs: false})
 		if err != nil {
 			t.Fatalf("ImportData failed: %v", err)
 		}
@@ -468,7 +469,7 @@ func TestStoreImportData(t *testing.T) {
 		}
 
 		// ForceDocs = true: both should be imported
-		resForce, err := store.ImportData(fixtureWithDuplicates, ImportOptions{ForceDocs: true})
+		resForce, err := store.ImportData(context.Background(), fixtureWithDuplicates, ImportOptions{ForceDocs: true})
 		if err != nil {
 			t.Fatalf("ImportData with ForceDocs failed: %v", err)
 		}
@@ -486,7 +487,7 @@ func TestStoreImportData(t *testing.T) {
 
 		// 1. Invalid schema version
 		badVersion := &TransferData{Version: 99}
-		_, err := store.ImportData(badVersion, ImportOptions{})
+		_, err := store.ImportData(context.Background(), badVersion, ImportOptions{})
 		if !errors.Is(err, ErrInvalidSchemaVersion) {
 			t.Errorf("expected ErrInvalidSchemaVersion, got %v", err)
 		}
@@ -505,18 +506,18 @@ func TestStoreImportData(t *testing.T) {
 				},
 			},
 		}
-		_, err = store.ImportData(badStatusData, ImportOptions{Strict: true})
+		_, err = store.ImportData(context.Background(), badStatusData, ImportOptions{Strict: true})
 		if !errors.Is(err, ErrInvalidStatus) {
 			t.Errorf("expected ErrInvalidStatus, got %v", err)
 		}
 
 		// Verify rollback: VALID_PROJ should NOT exist in DB!
-		if _, err := store.GetProjectByCode("VALID_PROJ"); !errors.Is(err, ErrProjectNotFound) {
+		if _, err := store.GetProjectByCode(context.Background(), "VALID_PROJ"); !errors.Is(err, ErrProjectNotFound) {
 			t.Errorf("expected project to be rolled back, got %v", err)
 		}
 
 		// 3. Invalid status in non-strict mode -> skip invalid task, keep valid ones
-		resNonStrict, err := store.ImportData(badStatusData, ImportOptions{Strict: false})
+		resNonStrict, err := store.ImportData(context.Background(), badStatusData, ImportOptions{Strict: false})
 		if err != nil {
 			t.Fatalf("expected non-strict mode to succeed with warnings, got %v", err)
 		}
@@ -537,7 +538,7 @@ func TestStoreImportData(t *testing.T) {
 				{Title: "Bad Prio Task", Status: StatusPending, Priority: "extreme"},
 			},
 		}
-		_, err = store.ImportData(badPriorityData, ImportOptions{Strict: true})
+		_, err = store.ImportData(context.Background(), badPriorityData, ImportOptions{Strict: true})
 		if !errors.Is(err, ErrInvalidPriority) {
 			t.Errorf("expected ErrInvalidPriority, got %v", err)
 		}
@@ -549,7 +550,7 @@ func TestStoreImportData(t *testing.T) {
 				{Title: "Deleted Task", Status: StatusDeleted, Priority: "low"},
 			},
 		}
-		resDeleted, err := store.ImportData(deletedStatusData, ImportOptions{Strict: true})
+		resDeleted, err := store.ImportData(context.Background(), deletedStatusData, ImportOptions{Strict: true})
 		if err != nil {
 			t.Fatalf("expected importing task with StatusDeleted to succeed, got %v", err)
 		}
@@ -565,7 +566,7 @@ func TestStoreImportData(t *testing.T) {
 				{Title: "Legacy Abort Task", Status: "abort", Priority: "medium"},
 			},
 		}
-		resAborted, err := store.ImportData(abortedStatusData, ImportOptions{Strict: true})
+		resAborted, err := store.ImportData(context.Background(), abortedStatusData, ImportOptions{Strict: true})
 		if err != nil {
 			t.Fatalf("expected importing aborted tasks to succeed: %v", err)
 		}
@@ -573,7 +574,7 @@ func TestStoreImportData(t *testing.T) {
 			t.Errorf("expected 2 tasks imported, got %d", resAborted.TasksImported)
 		}
 
-		tasks, err := store.List(string(StatusAborted), "")
+		tasks, err := store.List(context.Background(), string(StatusAborted), "")
 		if err != nil {
 			t.Fatalf("failed to list aborted tasks: %v", err)
 		}
@@ -608,7 +609,7 @@ func TestStoreImportData(t *testing.T) {
 			},
 		}
 
-		res, err := store.ImportData(fixture, ImportOptions{DryRun: true})
+		res, err := store.ImportData(context.Background(), fixture, ImportOptions{DryRun: true})
 		if err != nil {
 			t.Fatalf("ImportData in dry-run failed: %v", err)
 		}
@@ -617,7 +618,7 @@ func TestStoreImportData(t *testing.T) {
 		}
 
 		// Database should still be empty
-		projs, err := store.ListProjects()
+		projs, err := store.ListProjects(context.Background())
 		if err != nil {
 			t.Fatalf("ListProjects failed: %v", err)
 		}

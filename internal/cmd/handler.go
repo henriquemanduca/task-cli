@@ -19,6 +19,8 @@ func (f HandlerFunc) Run(ctx *Context, args []string) error {
 	return f(ctx, args)
 }
 
+var _ Handler = HandlerFunc(nil)
+
 // Action defines the decoupled contract for an individual command action adhering to
 // the Single Responsibility Principle:
 //  1. Parse parses and validates command line arguments into a typed argument schema (TArgs).
@@ -40,6 +42,8 @@ type ActionHandler[TArgs any, TResult any] struct {
 func NewActionHandler[TArgs any, TResult any](action Action[TArgs, TResult]) *ActionHandler[TArgs, TResult] {
 	return &ActionHandler[TArgs, TResult]{Action: action}
 }
+
+var _ Handler = (*ActionHandler[struct{}, struct{}])(nil)
 
 // Run executes the full action pipeline (Parse, Execute, Format).
 func (h *ActionHandler[TArgs, TResult]) Run(ctx *Context, args []string) error {

@@ -9,12 +9,9 @@ import (
 
 func TestPruneAttachments_NonExistent(t *testing.T) {
 	tempDir := t.TempDir()
-	origOverride := attachmentsDirOverride
-	defer func() { attachmentsDirOverride = origOverride }()
+	root := filepath.Join(tempDir, "non_existent_attachments")
 
-	attachmentsDirOverride = filepath.Join(tempDir, "non_existent_attachments")
-
-	pruned, err := PruneAttachments(nil, false)
+	pruned, err := pruneAttachmentsDir(root, nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -25,11 +22,8 @@ func TestPruneAttachments_NonExistent(t *testing.T) {
 
 func TestPruneAttachments_DryRun(t *testing.T) {
 	tempDir := t.TempDir()
-	origOverride := attachmentsDirOverride
-	defer func() { attachmentsDirOverride = origOverride }()
 
 	attRoot := filepath.Join(tempDir, "attachments")
-	attachmentsDirOverride = attRoot
 
 	task10Dir := filepath.Join(attRoot, "10")
 	task20Dir := filepath.Join(attRoot, "20")
@@ -56,7 +50,7 @@ func TestPruneAttachments_DryRun(t *testing.T) {
 	absOrphan2, _ := filepath.Abs(orphan2)
 	absOrphan3, _ := filepath.Abs(orphan3)
 
-	pruned, err := PruneAttachments([]string{absActive1}, true)
+	pruned, err := pruneAttachmentsDir(attRoot, []string{absActive1}, true)
 	if err != nil {
 		t.Fatalf("unexpected error during dry run: %v", err)
 	}
@@ -81,11 +75,8 @@ func TestPruneAttachments_DryRun(t *testing.T) {
 
 func TestPruneAttachments_Execution(t *testing.T) {
 	tempDir := t.TempDir()
-	origOverride := attachmentsDirOverride
-	defer func() { attachmentsDirOverride = origOverride }()
 
 	attRoot := filepath.Join(tempDir, "attachments")
-	attachmentsDirOverride = attRoot
 
 	task10Dir := filepath.Join(attRoot, "10")
 	task20Dir := filepath.Join(attRoot, "20")
@@ -112,7 +103,7 @@ func TestPruneAttachments_Execution(t *testing.T) {
 	absOrphan2, _ := filepath.Abs(orphan2)
 	absOrphan3, _ := filepath.Abs(orphan3)
 
-	pruned, err := PruneAttachments([]string{absActive1}, false)
+	pruned, err := pruneAttachmentsDir(attRoot, []string{absActive1}, false)
 	if err != nil {
 		t.Fatalf("unexpected error during prune execution: %v", err)
 	}
@@ -147,11 +138,8 @@ func TestPruneAttachments_Execution(t *testing.T) {
 
 func TestPruneAttachments_AllOrphans(t *testing.T) {
 	tempDir := t.TempDir()
-	origOverride := attachmentsDirOverride
-	defer func() { attachmentsDirOverride = origOverride }()
 
 	attRoot := filepath.Join(tempDir, "attachments")
-	attachmentsDirOverride = attRoot
 
 	task30Dir := filepath.Join(attRoot, "30")
 	if err := os.MkdirAll(task30Dir, 0755); err != nil {
@@ -163,7 +151,7 @@ func TestPruneAttachments_AllOrphans(t *testing.T) {
 	_ = os.WriteFile(file1, []byte("data"), 0644)
 	_ = os.WriteFile(file2, []byte("data"), 0644)
 
-	pruned, err := PruneAttachments(nil, false)
+	pruned, err := pruneAttachmentsDir(attRoot, nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,11 +173,8 @@ func TestPruneAttachments_AllOrphans(t *testing.T) {
 
 func TestPruneAttachments_PathNormalization(t *testing.T) {
 	tempDir := t.TempDir()
-	origOverride := attachmentsDirOverride
-	defer func() { attachmentsDirOverride = origOverride }()
 
 	attRoot := filepath.Join(tempDir, "attachments")
-	attachmentsDirOverride = attRoot
 
 	task40Dir := filepath.Join(attRoot, "40")
 	if err := os.MkdirAll(task40Dir, 0755); err != nil {
@@ -202,7 +187,7 @@ func TestPruneAttachments_PathNormalization(t *testing.T) {
 	// Pass redundant slashes and relative-style components
 	unnormalizedPath := task40Dir + "/./../40//active.txt"
 
-	pruned, err := PruneAttachments([]string{unnormalizedPath, ""}, false)
+	pruned, err := pruneAttachmentsDir(attRoot, []string{unnormalizedPath, ""}, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -218,16 +203,13 @@ func TestPruneAttachments_PathNormalization(t *testing.T) {
 
 func TestPruneAttachments_NotADirectory(t *testing.T) {
 	tempDir := t.TempDir()
-	origOverride := attachmentsDirOverride
-	defer func() { attachmentsDirOverride = origOverride }()
 
 	filePath := filepath.Join(tempDir, "not_a_dir")
 	if err := os.WriteFile(filePath, []byte("regular file"), 0644); err != nil {
 		t.Fatalf("failed to create file: %v", err)
 	}
-	attachmentsDirOverride = filePath
 
-	_, err := PruneAttachments(nil, false)
+	_, err := pruneAttachmentsDir(filePath, nil, false)
 	if err == nil {
 		t.Fatal("expected error when attachments root is a file, got nil")
 	}
@@ -236,10 +218,6 @@ func TestPruneAttachments_NotADirectory(t *testing.T) {
 func TestPruneAttachments_IntegrationDefaultDir(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tempDir)
-
-	origOverride := attachmentsDirOverride
-	attachmentsDirOverride = ""
-	defer func() { attachmentsDirOverride = origOverride }()
 
 	attRoot, err := AttachmentsDir()
 	if err != nil {

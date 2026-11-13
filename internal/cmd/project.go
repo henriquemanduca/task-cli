@@ -43,7 +43,7 @@ func (a *ProjectAddAction) Parse(ctx *Context, args []string) (ProjectAddArgs, e
 
 // Execute persists the project into the database.
 func (a *ProjectAddAction) Execute(ctx *Context, args ProjectAddArgs) (*db.Project, error) {
-	project, err := ctx.Store.AddProject(args.Code, args.Name, args.Description)
+	project, err := ctx.Store.AddProject(ctx.Context(), args.Code, args.Name, args.Description)
 	if err != nil {
 		if errors.Is(err, db.ErrProjectCodeExists) {
 			return nil, fmt.Errorf("project with code '%s' already exists", args.Code)
@@ -134,7 +134,7 @@ func (a *ProjectListAction) Parse(ctx *Context, args []string) (ProjectListArgs,
 
 // Execute queries the database for all projects.
 func (a *ProjectListAction) Execute(ctx *Context, args ProjectListArgs) (*ProjectListResult, error) {
-	projects, err := ctx.Store.ListProjects()
+	projects, err := ctx.Store.ListProjects(ctx.Context())
 	if err != nil {
 		return nil, fmt.Errorf("listing projects: %w", err)
 	}
@@ -232,10 +232,10 @@ func (a *ProjectViewAction) Parse(ctx *Context, args []string) (ProjectViewArgs,
 
 // Execute resolves the project by code or ID from the database.
 func (a *ProjectViewAction) Execute(ctx *Context, args ProjectViewArgs) (*ProjectViewResult, error) {
-	project, err := ctx.Store.GetProjectByCode(args.Target)
+	project, err := ctx.Store.GetProjectByCode(ctx.Context(), args.Target)
 	if err != nil && errors.Is(err, db.ErrProjectNotFound) {
 		if id, parseErr := strconv.ParseInt(args.Target, 10, 64); parseErr == nil {
-			project, err = ctx.Store.GetProjectByID(id)
+			project, err = ctx.Store.GetProjectByID(ctx.Context(), id)
 		}
 	}
 
@@ -344,10 +344,10 @@ func (a *ProjectUpdateAction) Parse(ctx *Context, args []string) (ProjectUpdateA
 
 // Execute resolves and updates the project in the database.
 func (a *ProjectUpdateAction) Execute(ctx *Context, args ProjectUpdateArgs) (*ProjectUpdateResult, error) {
-	project, err := ctx.Store.GetProjectByCode(args.Target)
+	project, err := ctx.Store.GetProjectByCode(ctx.Context(), args.Target)
 	if err != nil && errors.Is(err, db.ErrProjectNotFound) {
 		if id, parseErr := strconv.ParseInt(args.Target, 10, 64); parseErr == nil {
-			project, err = ctx.Store.GetProjectByID(id)
+			project, err = ctx.Store.GetProjectByID(ctx.Context(), id)
 		}
 	}
 
@@ -368,11 +368,11 @@ func (a *ProjectUpdateAction) Execute(ctx *Context, args ProjectUpdateArgs) (*Pr
 		newDesc = args.Description
 	}
 
-	if err := ctx.Store.UpdateProject(project.ID, newName, newDesc); err != nil {
+	if err := ctx.Store.UpdateProject(ctx.Context(), project.ID, newName, newDesc); err != nil {
 		return nil, fmt.Errorf("updating project: %w", err)
 	}
 
-	updatedProject, err := ctx.Store.GetProjectByID(project.ID)
+	updatedProject, err := ctx.Store.GetProjectByID(ctx.Context(), project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("reloading project: %w", err)
 	}

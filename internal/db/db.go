@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -34,6 +35,51 @@ const (
 	StatusDeleted    Status = "deleted"
 )
 
+// ParseStatus normalizes a raw status string and reports whether it is valid.
+// Legacy spellings used by older databases and imports are accepted.
+func ParseStatus(raw string) (Status, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "pending", "todo":
+		return StatusPending, true
+	case "in-progress":
+		return StatusInProgress, true
+	case "done":
+		return StatusDone, true
+	case "aborted", "abort":
+		return StatusAborted, true
+	case "deleted":
+		return StatusDeleted, true
+	default:
+		return "", false
+	}
+}
+
+// Priority is the priority level of a task.
+type Priority string
+
+const (
+	PriorityLow    Priority = "low"
+	PriorityMedium Priority = "medium"
+	PriorityHigh   Priority = "high"
+	PriorityUrgent Priority = "urgent"
+)
+
+// ParsePriority normalizes a raw priority string and reports whether it is valid.
+func ParsePriority(raw string) (Priority, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case string(PriorityLow):
+		return PriorityLow, true
+	case string(PriorityMedium):
+		return PriorityMedium, true
+	case string(PriorityHigh):
+		return PriorityHigh, true
+	case string(PriorityUrgent):
+		return PriorityUrgent, true
+	default:
+		return "", false
+	}
+}
+
 type Project struct {
 	ID          int64
 	Code        string
@@ -50,7 +96,7 @@ type Task struct {
 	Title       string
 	Description string
 	Status      Status
-	Priority    string
+	Priority    Priority
 	AbortReason *string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -91,17 +137,22 @@ func NewStore(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 
-	// modernc.org/sqlite registers the "sqlite" driver
-	db, err := sql.Open("sqlite", dbPath)
+	// modernc.org/sqlite registers the "sqlite" driver. busy_timeout makes
+	// concurrent writers wait instead of failing immediately with SQLITE_BUSY.
+	separator := "?"
+	if strings.Contains(dbPath, "?") {
+		separator = "&"
+	}
+	dsn := dbPath + separator + "_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
 
-	// Enable WAL mode and foreign keys
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to configure PRAGMAs: %w", err)
-	}
+	// A single connection avoids in-process lock contention and keeps the
+	// per-connection PRAGMAs (applied through the DSN) predictable.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS projects (
@@ -143,9 +194,17 @@ func NewStore(dbPath string) (*Store, error) {
 	}
 
 	// Clean up any trailing commas from legacy input and migrate legacy 'todo' status to 'pending', 'abort' to 'aborted'
-	_, _ = db.Exec(`UPDATE projects SET code = TRIM(code, ', '), name = TRIM(name, ', ') WHERE code LIKE '%,';`)
-	_, _ = db.Exec(`UPDATE tasks SET status = 'pending' WHERE status = 'todo';`)
-	_, _ = db.Exec(`UPDATE tasks SET status = 'aborted' WHERE status = 'abort';`)
+	legacyMigrations := []string{
+		`UPDATE projects SET code = TRIM(code, ', '), name = TRIM(name, ', ') WHERE code LIKE '%,';`,
+		`UPDATE tasks SET status = 'pending' WHERE status = 'todo';`,
+		`UPDATE tasks SET status = 'aborted' WHERE status = 'abort';`,
+	}
+	for _, query := range legacyMigrations {
+		if _, err := db.Exec(query); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to run legacy migration: %w", err)
+		}
+	}
 
 	return &Store{db: db}, nil
 }
@@ -155,14 +214,14 @@ func (s *Store) Close() error {
 }
 
 // AddProject creates a new project.
-func (s *Store) AddProject(code, name, description string) (*Project, error) {
+func (s *Store) AddProject(ctx context.Context, code, name, description string) (*Project, error) {
 	code = strings.Trim(code, ", ")
 	name = strings.Trim(name, ", ")
 	description = strings.Trim(description, ", ")
 
 	now := time.Now().UTC()
 	query := `INSERT INTO projects (code, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
-	res, err := s.db.Exec(query, code, name, description, now, now)
+	res, err := s.db.ExecContext(ctx, query, code, name, description, now, now)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return nil, ErrProjectCodeExists
@@ -186,9 +245,9 @@ func (s *Store) AddProject(code, name, description string) (*Project, error) {
 }
 
 // ListProjects returns all projects.
-func (s *Store) ListProjects() ([]Project, error) {
+func (s *Store) ListProjects(ctx context.Context) ([]Project, error) {
 	query := `SELECT id, code, name, COALESCE(description, ''), created_at, updated_at FROM projects ORDER BY id ASC`
-	rows, err := s.db.Query(query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query projects: %w", err)
 	}
@@ -206,12 +265,12 @@ func (s *Store) ListProjects() ([]Project, error) {
 }
 
 // GetProjectByCode returns a project by its unique code (case-insensitive and trimmed).
-func (s *Store) GetProjectByCode(code string) (*Project, error) {
+func (s *Store) GetProjectByCode(ctx context.Context, code string) (*Project, error) {
 	cleanCode := strings.Trim(code, ", ")
 	query := `SELECT id, code, name, COALESCE(description, ''), created_at, updated_at
 	          FROM projects
 	          WHERE code = ? COLLATE NOCASE`
-	row := s.db.QueryRow(query, cleanCode)
+	row := s.db.QueryRowContext(ctx, query, cleanCode)
 
 	var p Project
 	if err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt); err != nil {
@@ -224,11 +283,11 @@ func (s *Store) GetProjectByCode(code string) (*Project, error) {
 }
 
 // GetProjectByID returns a project by its numeric ID.
-func (s *Store) GetProjectByID(id int64) (*Project, error) {
+func (s *Store) GetProjectByID(ctx context.Context, id int64) (*Project, error) {
 	query := `SELECT id, code, name, COALESCE(description, ''), created_at, updated_at
 	          FROM projects
 	          WHERE id = ?`
-	row := s.db.QueryRow(query, id)
+	row := s.db.QueryRowContext(ctx, query, id)
 
 	var p Project
 	if err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt); err != nil {
@@ -241,10 +300,10 @@ func (s *Store) GetProjectByID(id int64) (*Project, error) {
 }
 
 // UpdateProject updates the name and description of an existing project by ID.
-func (s *Store) UpdateProject(id int64, name, description string) error {
+func (s *Store) UpdateProject(ctx context.Context, id int64, name, description string) error {
 	now := time.Now().UTC()
 	query := `UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?`
-	res, err := s.db.Exec(query, name, description, now, id)
+	res, err := s.db.ExecContext(ctx, query, name, description, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to update project: %w", err)
 	}
@@ -259,13 +318,16 @@ func (s *Store) UpdateProject(id int64, name, description string) error {
 }
 
 // Add creates a new task with a title and optional description.
-func (s *Store) Add(title, description string, projectID *int64, priority string) (*Task, error) {
+func (s *Store) Add(ctx context.Context, title, description string, projectID *int64, priority Priority) (*Task, error) {
 	now := time.Now().UTC()
 	if priority == "" {
-		priority = "medium"
+		priority = PriorityMedium
+	}
+	if _, ok := ParsePriority(string(priority)); !ok {
+		return nil, fmt.Errorf("%w: %q", ErrInvalidPriority, priority)
 	}
 	query := `INSERT INTO tasks (project_id, title, description, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
-	res, err := s.db.Exec(query, projectID, title, description, string(StatusPending), priority, now, now)
+	res, err := s.db.ExecContext(ctx, query, projectID, title, description, string(StatusPending), priority, now, now)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert task: %w", err)
 	}
@@ -287,9 +349,25 @@ func (s *Store) Add(title, description string, projectID *int64, priority string
 	}, nil
 }
 
+// rowScanner is satisfied by *sql.Row and *sql.Rows.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanTask scans a task row shared by every task query.
+func scanTask(scanner rowScanner) (*Task, error) {
+	var t Task
+	var status string
+	if err := scanner.Scan(&t.ID, &t.ProjectID, &t.ProjectCode, &t.Title, &t.Description, &status, &t.Priority, &t.AbortReason, &t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
+		return nil, err
+	}
+	t.Status = Status(status)
+	return &t, nil
+}
+
 // List returns active tasks (soft deleted tasks excluded), with optional status and project filters.
 // projectFilter matches either project ID (if numeric) or project code (case-insensitive).
-func (s *Store) List(statusFilter, projectFilter string) ([]Task, error) {
+func (s *Store) List(ctx context.Context, statusFilter, projectFilter string) ([]Task, error) {
 	query := `SELECT t.id, t.project_id, COALESCE(p.code, ''), t.title, COALESCE(t.description, ''),
 	                 t.status, t.priority, t.abort_reason, t.created_at, t.updated_at, t.deleted_at
 	          FROM tasks t
@@ -298,12 +376,12 @@ func (s *Store) List(statusFilter, projectFilter string) ([]Task, error) {
 	var args []any
 
 	if statusFilter != "" {
-		sf := statusFilter
-		if sf == "abort" {
-			sf = string(StatusAborted)
+		status, ok := ParseStatus(statusFilter)
+		if !ok {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidStatus, statusFilter)
 		}
 		query += ` AND t.status = ?`
-		args = append(args, sf)
+		args = append(args, string(status))
 	}
 
 	if projectFilter != "" {
@@ -319,7 +397,7 @@ func (s *Store) List(statusFilter, projectFilter string) ([]Task, error) {
 
 	query += ` ORDER BY p.code ASC, t.id ASC`
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tasks: %w", err)
 	}
@@ -327,48 +405,48 @@ func (s *Store) List(statusFilter, projectFilter string) ([]Task, error) {
 
 	var tasks []Task
 	for rows.Next() {
-		var t Task
-		var st string
-		if err := rows.Scan(&t.ID, &t.ProjectID, &t.ProjectCode, &t.Title, &t.Description, &st, &t.Priority, &t.AbortReason, &t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
+		t, err := scanTask(rows)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan task: %w", err)
 		}
-		t.Status = Status(st)
-		tasks = append(tasks, t)
+		tasks = append(tasks, *t)
 	}
 
 	return tasks, rows.Err()
 }
 
 // GetTaskByID returns a task by its ID (including project code).
-func (s *Store) GetTaskByID(id int64) (*Task, error) {
+func (s *Store) GetTaskByID(ctx context.Context, id int64) (*Task, error) {
 	query := `SELECT t.id, t.project_id, COALESCE(p.code, ''), t.title, COALESCE(t.description, ''),
 	                 t.status, t.priority, t.abort_reason, t.created_at, t.updated_at, t.deleted_at
 	          FROM tasks t
 	          LEFT JOIN projects p ON t.project_id = p.id
 	          WHERE t.id = ? AND t.deleted_at IS NULL`
-	row := s.db.QueryRow(query, id)
+	row := s.db.QueryRowContext(ctx, query, id)
 
-	var t Task
-	var st string
-	if err := row.Scan(&t.ID, &t.ProjectID, &t.ProjectCode, &t.Title, &t.Description, &st, &t.Priority, &t.AbortReason, &t.CreatedAt, &t.UpdatedAt, &t.DeletedAt); err != nil {
+	t, err := scanTask(row)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrTaskNotFound
 		}
 		return nil, fmt.Errorf("failed to query task by id: %w", err)
 	}
-	t.Status = Status(st)
-	return &t, nil
+	return t, nil
 }
+
+// mutableTaskFilter is the SQL predicate for tasks that may be modified.
+// It is applied in the UPDATE itself so the check and the write are atomic.
+const mutableTaskFilter = `deleted_at IS NULL AND status NOT IN ('deleted', 'aborted', 'abort')`
 
 // CheckTaskMutable verifies whether a task exists and is in an editable state.
 // Returns nil if the task is active and mutable.
 // Returns ErrTaskNotFound if the task does not exist in the database.
 // Returns ErrTaskImmutable if the task is deleted (deleted_at IS NOT NULL or status = 'deleted') or aborted.
-func (s *Store) CheckTaskMutable(id int64) error {
+func (s *Store) CheckTaskMutable(ctx context.Context, id int64) error {
 	query := `SELECT status, deleted_at FROM tasks WHERE id = ?`
 	var st string
 	var deletedAt *time.Time
-	err := s.db.QueryRow(query, id).Scan(&st, &deletedAt)
+	err := s.db.QueryRowContext(ctx, query, id).Scan(&st, &deletedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrTaskNotFound
@@ -376,22 +454,27 @@ func (s *Store) CheckTaskMutable(id int64) error {
 		return fmt.Errorf("failed to query task status: %w", err)
 	}
 
-	status := Status(st)
-	if deletedAt != nil || status == StatusDeleted || status == StatusAborted || status == "abort" {
+	status, ok := ParseStatus(st)
+	if deletedAt != nil || !ok || status == StatusDeleted || status == StatusAborted {
 		return ErrTaskImmutable
 	}
 
 	return nil
 }
 
-// Update updates the title and description of an active task.
-func (s *Store) Update(id int64, title, description string) error {
-	if err := s.CheckTaskMutable(id); err != nil {
+// classifyMutationFailure turns a zero-row UPDATE into the precise sentinel error.
+func (s *Store) classifyMutationFailure(ctx context.Context, id int64) error {
+	if err := s.CheckTaskMutable(ctx, id); err != nil {
 		return err
 	}
+	return ErrTaskNotFound
+}
+
+// Update updates the title and description of an active task.
+func (s *Store) Update(ctx context.Context, id int64, title, description string) error {
 	now := time.Now().UTC()
-	query := `UPDATE tasks SET title = ?, description = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
-	res, err := s.db.Exec(query, title, description, now, id)
+	query := `UPDATE tasks SET title = ?, description = ?, updated_at = ? WHERE id = ? AND ` + mutableTaskFilter
+	res, err := s.db.ExecContext(ctx, query, title, description, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to update task: %w", err)
 	}
@@ -400,19 +483,19 @@ func (s *Store) Update(id int64, title, description string) error {
 		return err
 	}
 	if rowsAffected == 0 {
-		return ErrTaskNotFound
+		return s.classifyMutationFailure(ctx, id)
 	}
 	return nil
 }
 
 // UpdateTaskDetails updates title, description, project_id, and priority of an active task.
-func (s *Store) UpdateTaskDetails(id int64, title, description string, projectID *int64, priority string) error {
-	if err := s.CheckTaskMutable(id); err != nil {
-		return err
+func (s *Store) UpdateTaskDetails(ctx context.Context, id int64, title, description string, projectID *int64, priority Priority) error {
+	if _, ok := ParsePriority(string(priority)); !ok {
+		return fmt.Errorf("%w: %q", ErrInvalidPriority, priority)
 	}
 	now := time.Now().UTC()
-	query := `UPDATE tasks SET title = ?, description = ?, project_id = ?, priority = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
-	res, err := s.db.Exec(query, title, description, projectID, priority, now, id)
+	query := `UPDATE tasks SET title = ?, description = ?, project_id = ?, priority = ?, updated_at = ? WHERE id = ? AND ` + mutableTaskFilter
+	res, err := s.db.ExecContext(ctx, query, title, description, projectID, priority, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to update task details: %w", err)
 	}
@@ -421,19 +504,16 @@ func (s *Store) UpdateTaskDetails(id int64, title, description string, projectID
 		return err
 	}
 	if rowsAffected == 0 {
-		return ErrTaskNotFound
+		return s.classifyMutationFailure(ctx, id)
 	}
 	return nil
 }
 
 // UpdateDescription updates only the description of an active task.
-func (s *Store) UpdateDescription(id int64, description string) error {
-	if err := s.CheckTaskMutable(id); err != nil {
-		return err
-	}
+func (s *Store) UpdateDescription(ctx context.Context, id int64, description string) error {
 	now := time.Now().UTC()
-	query := `UPDATE tasks SET description = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
-	res, err := s.db.Exec(query, description, now, id)
+	query := `UPDATE tasks SET description = ?, updated_at = ? WHERE id = ? AND ` + mutableTaskFilter
+	res, err := s.db.ExecContext(ctx, query, description, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to update task description: %w", err)
 	}
@@ -442,22 +522,20 @@ func (s *Store) UpdateDescription(id int64, description string) error {
 		return err
 	}
 	if rowsAffected == 0 {
-		return ErrTaskNotFound
+		return s.classifyMutationFailure(ctx, id)
 	}
 	return nil
 }
 
 // UpdateStatus updates the status of an active task and optionally sets an abort reason.
-func (s *Store) UpdateStatus(id int64, status Status, abortReason *string) error {
-	if err := s.CheckTaskMutable(id); err != nil {
-		return err
-	}
-	if status == "abort" {
-		status = StatusAborted
+func (s *Store) UpdateStatus(ctx context.Context, id int64, status Status, abortReason *string) error {
+	parsed, ok := ParseStatus(string(status))
+	if !ok || parsed == StatusDeleted {
+		return fmt.Errorf("%w: %q", ErrInvalidStatus, status)
 	}
 	now := time.Now().UTC()
-	query := `UPDATE tasks SET status = ?, abort_reason = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
-	res, err := s.db.Exec(query, string(status), abortReason, now, id)
+	query := `UPDATE tasks SET status = ?, abort_reason = ?, updated_at = ? WHERE id = ? AND ` + mutableTaskFilter
+	res, err := s.db.ExecContext(ctx, query, string(parsed), abortReason, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to update task status: %w", err)
 	}
@@ -466,19 +544,20 @@ func (s *Store) UpdateStatus(id int64, status Status, abortReason *string) error
 		return err
 	}
 	if rowsAffected == 0 {
-		return ErrTaskNotFound
+		return s.classifyMutationFailure(ctx, id)
 	}
 	return nil
 }
 
 // UpdatePriority updates the priority of an active task.
-func (s *Store) UpdatePriority(id int64, priority string) error {
-	if err := s.CheckTaskMutable(id); err != nil {
-		return err
+func (s *Store) UpdatePriority(ctx context.Context, id int64, priority Priority) error {
+	parsed, ok := ParsePriority(string(priority))
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrInvalidPriority, priority)
 	}
 	now := time.Now().UTC()
-	query := `UPDATE tasks SET priority = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
-	res, err := s.db.Exec(query, priority, now, id)
+	query := `UPDATE tasks SET priority = ?, updated_at = ? WHERE id = ? AND ` + mutableTaskFilter
+	res, err := s.db.ExecContext(ctx, query, parsed, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to update task priority: %w", err)
 	}
@@ -487,16 +566,16 @@ func (s *Store) UpdatePriority(id int64, priority string) error {
 		return err
 	}
 	if rowsAffected == 0 {
-		return ErrTaskNotFound
+		return s.classifyMutationFailure(ctx, id)
 	}
 	return nil
 }
 
 // Delete performs a soft delete on a task by setting its deleted_at timestamp and updating its status to deleted.
-func (s *Store) Delete(id int64) error {
+func (s *Store) Delete(ctx context.Context, id int64) error {
 	now := time.Now().UTC()
 	query := `UPDATE tasks SET status = ?, deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`
-	res, err := s.db.Exec(query, string(StatusDeleted), now, now, id)
+	res, err := s.db.ExecContext(ctx, query, string(StatusDeleted), now, now, id)
 	if err != nil {
 		return fmt.Errorf("failed to soft delete task: %w", err)
 	}
@@ -511,8 +590,8 @@ func (s *Store) Delete(id int64) error {
 }
 
 // AddDocument links a new document to a task.
-func (s *Store) AddDocument(taskID int64, name, docType, filePath string) (*Document, error) {
-	if _, err := s.GetTaskByID(taskID); err != nil {
+func (s *Store) AddDocument(ctx context.Context, taskID int64, name, docType, filePath string) (*Document, error) {
+	if _, err := s.GetTaskByID(ctx, taskID); err != nil {
 		return nil, err
 	}
 
@@ -522,7 +601,7 @@ func (s *Store) AddDocument(taskID int64, name, docType, filePath string) (*Docu
 
 	now := time.Now().UTC()
 	query := `INSERT INTO documents (task_id, name, type, file_path, created_at) VALUES (?, ?, ?, ?, ?)`
-	res, err := s.db.Exec(query, taskID, name, docType, filePath, now)
+	res, err := s.db.ExecContext(ctx, query, taskID, name, docType, filePath, now)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert document: %w", err)
 	}
@@ -543,9 +622,9 @@ func (s *Store) AddDocument(taskID int64, name, docType, filePath string) (*Docu
 }
 
 // ListDocuments returns all documents linked to a task.
-func (s *Store) ListDocuments(taskID int64) ([]Document, error) {
+func (s *Store) ListDocuments(ctx context.Context, taskID int64) ([]Document, error) {
 	query := `SELECT id, task_id, name, type, file_path, created_at FROM documents WHERE task_id = ? ORDER BY id ASC`
-	rows, err := s.db.Query(query, taskID)
+	rows, err := s.db.QueryContext(ctx, query, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query documents: %w", err)
 	}
@@ -563,9 +642,9 @@ func (s *Store) ListDocuments(taskID int64) ([]Document, error) {
 }
 
 // GetDocumentByID returns a document by its ID.
-func (s *Store) GetDocumentByID(id int64) (*Document, error) {
+func (s *Store) GetDocumentByID(ctx context.Context, id int64) (*Document, error) {
 	query := `SELECT id, task_id, name, type, file_path, created_at FROM documents WHERE id = ?`
-	row := s.db.QueryRow(query, id)
+	row := s.db.QueryRowContext(ctx, query, id)
 
 	var d Document
 	if err := row.Scan(&d.ID, &d.TaskID, &d.Name, &d.Type, &d.FilePath, &d.CreatedAt); err != nil {
@@ -578,9 +657,9 @@ func (s *Store) GetDocumentByID(id int64) (*Document, error) {
 }
 
 // DeleteDocument removes a document link by ID.
-func (s *Store) DeleteDocument(id int64) error {
+func (s *Store) DeleteDocument(ctx context.Context, id int64) error {
 	query := `DELETE FROM documents WHERE id = ?`
-	res, err := s.db.Exec(query, id)
+	res, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete document: %w", err)
 	}
@@ -595,9 +674,9 @@ func (s *Store) DeleteDocument(id int64) error {
 }
 
 // ListAllDocumentPaths returns all file paths of active documents belonging to non-deleted tasks.
-func (s *Store) ListAllDocumentPaths() ([]string, error) {
+func (s *Store) ListAllDocumentPaths(ctx context.Context) ([]string, error) {
 	query := `SELECT d.file_path FROM documents d JOIN tasks t ON d.task_id = t.id WHERE t.deleted_at IS NULL AND t.status != 'deleted' ORDER BY d.id ASC`
-	rows, err := s.db.Query(query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query document paths: %w", err)
 	}

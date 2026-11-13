@@ -7,9 +7,6 @@ import (
 	"sort"
 )
 
-// attachmentsDirOverride allows redirecting the attachment root directory during tests.
-var attachmentsDirOverride string
-
 // PruneAttachments scans the centralized attachments repository (<data_root>/attachments/),
 // identifies orphaned files that are not referenced in activePaths, and deletes them
 // unless dryRun is true.
@@ -19,13 +16,9 @@ var attachmentsDirOverride string
 //
 // Returns the list of pruned file paths.
 func PruneAttachments(activePaths []string, dryRun bool) (pruned []string, err error) {
-	root := attachmentsDirOverride
-	if root == "" {
-		var err error
-		root, err = AttachmentsDir()
-		if err != nil {
-			return nil, err
-		}
+	root, err := AttachmentsDir()
+	if err != nil {
+		return nil, err
 	}
 	return pruneAttachmentsDir(root, activePaths, dryRun)
 }
@@ -92,12 +85,23 @@ func pruneAttachmentsDir(attachmentsRoot string, activePaths []string, dryRun bo
 
 	if !dryRun {
 		entries, err := os.ReadDir(attachmentsRoot)
-		if err == nil {
-			for _, entry := range entries {
-				if entry.IsDir() {
-					taskDir := filepath.Join(attachmentsRoot, entry.Name())
-					_ = os.Remove(taskDir)
-				}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read attachments directory: %w", err)
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			taskDir := filepath.Join(attachmentsRoot, entry.Name())
+			subEntries, err := os.ReadDir(taskDir)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read task attachment directory %q: %w", taskDir, err)
+			}
+			if len(subEntries) != 0 {
+				continue
+			}
+			if err := os.Remove(taskDir); err != nil && !os.IsNotExist(err) {
+				return nil, fmt.Errorf("failed to remove empty task directory %q: %w", taskDir, err)
 			}
 		}
 	}

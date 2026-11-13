@@ -226,7 +226,7 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error running 'start': %v", err)
 	}
-	t1, _ := ctx.Store.GetTaskByID(1)
+	t1, _ := ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if t1.Status != "in-progress" {
 		t.Fatalf("expected in-progress, got %s", t1.Status)
 	}
@@ -235,7 +235,7 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error running 'done': %v", err)
 	}
-	t1, _ = ctx.Store.GetTaskByID(1)
+	t1, _ = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if t1.Status != "done" {
 		t.Fatalf("expected done, got %s", t1.Status)
 	}
@@ -244,7 +244,7 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error running 'pending': %v", err)
 	}
-	t1, _ = ctx.Store.GetTaskByID(1)
+	t1, _ = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if t1.Status != "pending" {
 		t.Fatalf("expected pending, got %s", t1.Status)
 	}
@@ -253,7 +253,7 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error running 'abort': %v", err)
 	}
-	t1, _ = ctx.Store.GetTaskByID(1)
+	t1, _ = ctx.Store.GetTaskByID(ctx.Context(), 1)
 	if t1.Status != "aborted" || t1.AbortReason == nil || *t1.AbortReason != "No longer needed" {
 		t.Fatalf("expected aborted with reason, got %v", t1)
 	}
@@ -306,33 +306,44 @@ func TestFlatAliases_ExecutionRetrocompatibility(t *testing.T) {
 	}
 
 	// 12. cmd.Execute dispatch with flat aliases
-	handled, err := Execute(ctx, "ls", []string{})
+	handled, err := Execute(Root, ctx, "ls", []string{})
 	if !handled || err != nil {
-		t.Fatalf("expected Execute('ls') to succeed: handled=%v, err=%v", handled, err)
+		t.Fatalf("expected Execute(Root, 'ls') to succeed: handled=%v, err=%v", handled, err)
 	}
 
-	handled, err = Execute(ctx, "lp", []string{})
+	handled, err = Execute(Root, ctx, "lp", []string{})
 	if !handled || err != nil {
-		t.Fatalf("expected Execute('lp') to succeed: handled=%v, err=%v", handled, err)
+		t.Fatalf("expected Execute(Root, 'lp') to succeed: handled=%v, err=%v", handled, err)
 	}
 }
 
 func TestFlatAliases_TransversalFlags(t *testing.T) {
 	tempDir := t.TempDir()
 	customDB := filepath.Join(tempDir, "transversal_alias.db")
+	t.Chdir(tempDir)
 
-	// Create task using 'add' with --db flag
-	err := Root.Execute(nil, []string{"--db", customDB, "add", "Transversal Task", "Testing --db with flat alias"})
+	// Create task using 'add' with --db flag, resolving flags exactly like main.
+	addCtx, addRemaining, addCleanup, err := ResolveContext([]string{"--db", customDB, "add", "Transversal Task", "Testing --db with flat alias"})
 	if err != nil {
-		t.Fatalf("unexpected error creating task via flat alias with --db: %v", err)
+		t.Fatalf("unexpected error resolving add context: %v", err)
+	}
+	defer addCleanup()
+
+	if handled, err := Execute(Root, addCtx, addRemaining[0], addRemaining[1:]); err != nil || !handled {
+		t.Fatalf("unexpected error creating task via flat alias with --db: handled=%v err=%v", handled, err)
 	}
 
 	// Verify task in custom database using 'list' with -F table
 	var buf bytes.Buffer
-	ctx := &Context{Out: &buf}
-	err = Root.Execute(ctx, []string{"--db", customDB, "list", "-F", "table"})
+	listCtx, listRemaining, listCleanup, err := ResolveContext([]string{"--db", customDB, "list", "-F", "table"})
 	if err != nil {
-		t.Fatalf("unexpected error running 'list -F table': %v", err)
+		t.Fatalf("unexpected error resolving list context: %v", err)
+	}
+	defer listCleanup()
+	listCtx.Out = &buf
+
+	if handled, err := Execute(Root, listCtx, listRemaining[0], listRemaining[1:]); err != nil || !handled {
+		t.Fatalf("unexpected error running 'list -F table': handled=%v err=%v", handled, err)
 	}
 
 	out := buf.String()

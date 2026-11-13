@@ -25,11 +25,12 @@ type DocAddArgs struct {
 	ForceLink bool
 }
 
-// DocAddResult holds the created document link, task ID, and copy status.
+// DocAddResult holds the created document link, task ID, copy status, and warnings.
 type DocAddResult struct {
 	Document *db.Document
 	TaskID   int64
 	Copied   bool
+	Warning  string
 }
 
 // DocAddAction encapsulates schema parsing, execution, and output formatting for document attachment.
@@ -122,7 +123,7 @@ func (a *DocAddAction) Execute(ctx *Context, args DocAddArgs) (*DocAddResult, er
 	}
 
 	// 1. Validate if task exists and is not deleted
-	if _, err := ctx.Store.GetTaskByID(args.TaskID); err != nil {
+	if _, err := ctx.Store.GetTaskByID(ctx.Context(), args.TaskID); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.TaskID)
 		}
@@ -147,12 +148,8 @@ func (a *DocAddAction) Execute(ctx *Context, args DocAddArgs) (*DocAddResult, er
 		return nil, fmt.Errorf("failed to save attachment: %w", err)
 	}
 
-	if !copied && !args.ForceLink {
-		fmt.Fprintf(ctx.ErrWriter(), "Warning: file exceeds 100MB; linking by reference without copying. Use --copy to force duplication.\n")
-	}
-
 	// 4. Insert document record into SQLite
-	doc, err := ctx.Store.AddDocument(args.TaskID, args.Name, args.DocType, savedPath)
+	doc, err := ctx.Store.AddDocument(ctx.Context(), args.TaskID, args.Name, args.DocType, savedPath)
 	if err != nil {
 		// 5. Protected rollback: remove newly created copy if DB insertion failed
 		if copied {
@@ -164,16 +161,22 @@ func (a *DocAddAction) Execute(ctx *Context, args DocAddArgs) (*DocAddResult, er
 		return nil, fmt.Errorf("failed to link document: %w", err)
 	}
 
-	// 6. Return result
-	return &DocAddResult{
+	result := &DocAddResult{
 		Document: doc,
 		TaskID:   args.TaskID,
 		Copied:   copied,
-	}, nil
+	}
+	if !copied && !args.ForceLink {
+		result.Warning = "file exceeds 100MB; linking by reference without copying. Use --copy to force duplication."
+	}
+	return result, nil
 }
 
 // Format renders the document attachment confirmation.
 func (a *DocAddAction) Format(ctx *Context, w io.Writer, res *DocAddResult) error {
+	if res.Warning != "" {
+		fmt.Fprintf(ctx.ErrWriter(), "Warning: %s\n", res.Warning)
+	}
 	_, err := fmt.Fprintf(w, "Document linked successfully (ID: %d) to task #%04d\n", res.Document.ID, res.TaskID)
 	return err
 }
@@ -219,14 +222,14 @@ func (a *DocListAction) Parse(ctx *Context, args []string) (DocListArgs, error) 
 
 // Execute retrieves documents linked to the task.
 func (a *DocListAction) Execute(ctx *Context, args DocListArgs) (*DocListResult, error) {
-	if _, err := ctx.Store.GetTaskByID(args.TaskID); err != nil {
+	if _, err := ctx.Store.GetTaskByID(ctx.Context(), args.TaskID); err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.TaskID)
 		}
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
-	docs, err := ctx.Store.ListDocuments(args.TaskID)
+	docs, err := ctx.Store.ListDocuments(ctx.Context(), args.TaskID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list documents: %w", err)
 	}
@@ -292,7 +295,7 @@ func (a *DocDeleteAction) Parse(ctx *Context, args []string) (DocDeleteArgs, err
 
 // Execute removes the document from the database.
 func (a *DocDeleteAction) Execute(ctx *Context, args DocDeleteArgs) (*DocDeleteResult, error) {
-	if err := ctx.Store.DeleteDocument(args.DocID); err != nil {
+	if err := ctx.Store.DeleteDocument(ctx.Context(), args.DocID); err != nil {
 		if errors.Is(err, db.ErrDocumentNotFound) {
 			return nil, fmt.Errorf("document with ID %d not found", args.DocID)
 		}
@@ -372,7 +375,7 @@ func (a *DocOpenAction) Execute(ctx *Context, args DocOpenArgs) (*DocOpenResult,
 	}
 
 	if args.DocID > 0 {
-		doc, err := ctx.Store.GetDocumentByID(args.DocID)
+		doc, err := ctx.Store.GetDocumentByID(ctx.Context(), args.DocID)
 		if err != nil {
 			if errors.Is(err, db.ErrDocumentNotFound) {
 				return nil, fmt.Errorf("document with ID %d not found", args.DocID)
@@ -380,7 +383,7 @@ func (a *DocOpenAction) Execute(ctx *Context, args DocOpenArgs) (*DocOpenResult,
 			return nil, fmt.Errorf("database error: %w", err)
 		}
 
-		task, err := ctx.Store.GetTaskByID(doc.TaskID)
+		task, err := ctx.Store.GetTaskByID(ctx.Context(), doc.TaskID)
 		if err != nil {
 			if errors.Is(err, db.ErrTaskNotFound) {
 				return nil, fmt.Errorf("task with ID %d not found or deleted", doc.TaskID)
@@ -398,7 +401,7 @@ func (a *DocOpenAction) Execute(ctx *Context, args DocOpenArgs) (*DocOpenResult,
 		return &DocOpenResult{Output: out}, nil
 	}
 
-	task, err := ctx.Store.GetTaskByID(args.TaskID)
+	task, err := ctx.Store.GetTaskByID(ctx.Context(), args.TaskID)
 	if err != nil {
 		if errors.Is(err, db.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found", args.TaskID)
@@ -481,7 +484,7 @@ func (a *DocPruneAction) Execute(ctx *Context, args DocPruneArgs) (*DocPruneResu
 		return nil, errors.New("database store is not initialized")
 	}
 
-	activePaths, err := ctx.Store.ListAllDocumentPaths()
+	activePaths, err := ctx.Store.ListAllDocumentPaths(ctx.Context())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query active document paths: %w", err)
 	}

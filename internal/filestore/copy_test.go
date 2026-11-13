@@ -228,9 +228,6 @@ func TestSaveAttachment(t *testing.T) {
 	})
 
 	t.Run("file larger than threshold without forceCopy links by reference", func(t *testing.T) {
-		origThreshold := maxCopyThreshold
-		defer func() { maxCopyThreshold = origThreshold }()
-		maxCopyThreshold = 100 // Temporarily lower threshold to 100 bytes
 
 		content := bytes.Repeat([]byte("A"), 200)
 		srcPath := filepath.Join(tempDir, "large_doc.bin")
@@ -239,7 +236,7 @@ func TestSaveAttachment(t *testing.T) {
 		}
 
 		absSrc, _ := filepath.Abs(srcPath)
-		savedPath, copied, err := SaveAttachment(srcPath, 100, false, false)
+		savedPath, copied, err := saveAttachment(srcPath, 100, false, false, 100)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -252,9 +249,6 @@ func TestSaveAttachment(t *testing.T) {
 	})
 
 	t.Run("file larger than threshold with forceCopy duplicates file", func(t *testing.T) {
-		origThreshold := maxCopyThreshold
-		defer func() { maxCopyThreshold = origThreshold }()
-		maxCopyThreshold = 100 // Temporarily lower threshold to 100 bytes
 
 		content := bytes.Repeat([]byte("B"), 200)
 		srcPath := filepath.Join(tempDir, "forced_large_doc.bin")
@@ -262,7 +256,7 @@ func TestSaveAttachment(t *testing.T) {
 			t.Fatalf("failed to write test file: %v", err)
 		}
 
-		savedPath, copied, err := SaveAttachment(srcPath, 101, true, false)
+		savedPath, copied, err := saveAttachment(srcPath, 101, true, false, 100)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

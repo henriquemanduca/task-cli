@@ -128,7 +128,7 @@ func TestProjectView(t *testing.T) {
 	}
 
 	// 4. View by numeric ID
-	p, err := ctx.Store.GetProjectByCode("TKC")
+	p, err := ctx.Store.GetProjectByCode(ctx.Context(), "TKC")
 	if err != nil {
 		t.Fatalf("unexpected error getting project: %v", err)
 	}
@@ -210,9 +210,9 @@ func TestProjectHierarchicalRouting(t *testing.T) {
 	}
 
 	// 6. Execute dispatch via top-level command "project"
-	handled, err := Execute(ctx, "project", []string{"list"})
+	handled, err := Execute(Root, ctx, "project", []string{"list"})
 	if !handled || err != nil {
-		t.Fatalf("expected handled=true, err=nil for Execute('project', ['list']), got handled=%v, err=%v", handled, err)
+		t.Fatalf("expected handled=true, err=nil for Execute(Root, 'project', ['list']), got handled=%v, err=%v", handled, err)
 	}
 }
 
@@ -221,7 +221,7 @@ func TestProjectUpdate(t *testing.T) {
 	defer cleanup()
 
 	// Setup initial project
-	_, err := ctx.Store.AddProject("PRJ", "Initial Name", "Initial Description")
+	_, err := ctx.Store.AddProject(ctx.Context(), "PRJ", "Initial Name", "Initial Description")
 	if err != nil {
 		t.Fatalf("failed to add project: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestProjectUpdate(t *testing.T) {
 		t.Fatalf("expected success message, got: %s", out)
 	}
 
-	p, err := ctx.Store.GetProjectByCode("PRJ")
+	p, err := ctx.Store.GetProjectByCode(ctx.Context(), "PRJ")
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestProjectUpdate(t *testing.T) {
 		t.Fatalf("expected success message, got: %s", out)
 	}
 
-	p, err = ctx.Store.GetProjectByID(p.ID)
+	p, err = ctx.Store.GetProjectByID(ctx.Context(), p.ID)
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestProjectUpdate(t *testing.T) {
 		t.Fatalf("expected success message, got: %s", out)
 	}
 
-	p, err = ctx.Store.GetProjectByCode("PRJ")
+	p, err = ctx.Store.GetProjectByCode(ctx.Context(), "PRJ")
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}
@@ -297,4 +297,3 @@ func TestProjectUpdate(t *testing.T) {
 		t.Fatalf("unexpected project data: %+v", p)
 	}
 }
-

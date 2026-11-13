@@ -8,13 +8,13 @@ import (
 
 func TestParseGlobalFlags(t *testing.T) {
 	tests := []struct {
-		name           string
-		args           []string
-		expectedDB     string
-		expectedFmt    string
-		expectedRem    []string
-		expectErr      bool
-		errContains    string
+		name        string
+		args        []string
+		expectedDB  string
+		expectedFmt string
+		expectedRem []string
+		expectErr   bool
+		errContains string
 	}{
 		{
 			name:        "no global flags",
@@ -189,6 +189,7 @@ func TestResolveContext(t *testing.T) {
 func TestRootExecute_TransversalFlagsInjection(t *testing.T) {
 	ctx, cleanup := setupTestContext(t)
 	defer cleanup()
+	t.Chdir(t.TempDir())
 
 	// 1. Add a task to check table output
 	err := Root.Execute(ctx, []string{"task", "add", "Transversal Task", "Testing global flags"})
@@ -196,12 +197,24 @@ func TestRootExecute_TransversalFlagsInjection(t *testing.T) {
 		t.Fatalf("failed to add task: %v", err)
 	}
 
-	// 2. Dispatch task list with -F table interspersed
+	// 2. Resolve transversal flags anywhere, then dispatch like main does.
+	resolvedCtx, remaining, resolveCleanup, err := ResolveContext([]string{"--db", ctx.DBPath, "task", "-F", "table", "list"})
+	if err != nil {
+		t.Fatalf("failed to resolve context: %v", err)
+	}
+	defer resolveCleanup()
+
+	var handled bool
 	out, err := captureStdout(func() error {
-		return Root.Execute(ctx, []string{"task", "-F", "table", "list"})
+		var execErr error
+		handled, execErr = Execute(Root, resolvedCtx, remaining[0], remaining[1:])
+		return execErr
 	})
 	if err != nil {
 		t.Fatalf("unexpected error running 'task -F table list': %v", err)
+	}
+	if !handled {
+		t.Fatal("expected 'task -F table list' to be handled")
 	}
 
 	// Check table headers
@@ -211,7 +224,7 @@ func TestRootExecute_TransversalFlagsInjection(t *testing.T) {
 	if !strings.Contains(out, "Transversal Task") {
 		t.Errorf("expected task title in output, got:\n%s", out)
 	}
-	if ctx.Format != "table" {
-		t.Errorf("expected ctx.Format to be updated to 'table', got %q", ctx.Format)
+	if resolvedCtx.Format != "table" {
+		t.Errorf("expected ctx.Format to be updated to 'table', got %q", resolvedCtx.Format)
 	}
 }
