@@ -35,7 +35,7 @@ var (
 	ErrProjectNotFound    = errors.New("project not found")
 	ErrInvalidProjectName = errors.New("invalid project name")
 	ErrTaskNotFound       = errors.New("task not found")
-	ErrTaskImmutable      = errors.New("cannot modify task with status deleted or aborted")
+	ErrTaskImmutable      = errors.New("cannot modify deleted task")
 	ErrInvalidStatus      = errors.New("invalid status")
 	ErrInvalidPriority    = errors.New("invalid priority")
 )
@@ -54,7 +54,6 @@ const (
 	StatusPending    Status = "pending"
 	StatusInProgress Status = "in-progress"
 	StatusDone       Status = "done"
-	StatusAborted    Status = "aborted"
 	StatusDeleted    Status = "deleted"
 )
 
@@ -67,8 +66,6 @@ func ParseStatus(raw string) (Status, bool) {
 		return StatusInProgress, true
 	case "done":
 		return StatusDone, true
-	case "aborted", "abort":
-		return StatusAborted, true
 	case "deleted":
 		return StatusDeleted, true
 	default:
@@ -109,7 +106,6 @@ type Task struct {
 	Description string
 	Status      Status
 	Priority    Priority
-	AbortReason string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
@@ -121,7 +117,7 @@ type Task struct {
 
 // Mutable reports whether the task may still be changed.
 func (t *Task) Mutable() bool {
-	return t.Status != StatusDeleted && t.Status != StatusAborted && t.DeletedAt == nil
+	return t.Status != StatusDeleted && t.DeletedAt == nil
 }
 
 // Store reads and writes a vault rooted at Root.
@@ -301,13 +297,12 @@ func (s *Store) loadProject(dirName string) (*Project, error) {
 // -----------------------------------------------------------------------------
 
 type taskMeta struct {
-	Status      Status         `yaml:"status"`
-	Priority    Priority       `yaml:"priority"`
-	Created     time.Time      `yaml:"created"`
-	Updated     time.Time      `yaml:"updated"`
-	AbortReason string         `yaml:"abort_reason,omitempty"`
-	Deleted     *time.Time     `yaml:"deleted,omitempty"`
-	Extra       map[string]any `yaml:",inline"`
+	Status   Status         `yaml:"status"`
+	Priority Priority       `yaml:"priority"`
+	Created  time.Time      `yaml:"created"`
+	Updated  time.Time      `yaml:"updated"`
+	Deleted  *time.Time     `yaml:"deleted,omitempty"`
+	Extra    map[string]any `yaml:",inline"`
 }
 
 var taskFileRe = regexp.MustCompile(`^(\d+)(?:-.*)?\.md$`)
@@ -449,7 +444,6 @@ func loadTask(f taskFile) (*Task, error) {
 		Description: desc,
 		Status:      StatusPending,
 		Priority:    PriorityMedium,
-		AbortReason: meta.AbortReason,
 		CreatedAt:   meta.Created,
 		UpdatedAt:   meta.Updated,
 		DeletedAt:   meta.Deleted,
@@ -477,13 +471,12 @@ func splitTitle(body string) (string, string) {
 
 func renderTask(t *Task) ([]byte, error) {
 	meta := taskMeta{
-		Status:      t.Status,
-		Priority:    t.Priority,
-		Created:     t.CreatedAt,
-		Updated:     t.UpdatedAt,
-		AbortReason: t.AbortReason,
-		Deleted:     t.DeletedAt,
-		Extra:       t.extra,
+		Status:   t.Status,
+		Priority: t.Priority,
+		Created:  t.CreatedAt,
+		Updated:  t.UpdatedAt,
+		Deleted:  t.DeletedAt,
+		Extra:    t.extra,
 	}
 	body := "# " + t.Title + "\n"
 	if t.Description != "" {
@@ -666,18 +659,14 @@ func (s *Store) UpdateTask(id int64, fn func(t *Task) error) (*Task, error) {
 	return t, nil
 }
 
-// SetStatus changes the status of a mutable task. reason is kept only for aborted.
-func (s *Store) SetStatus(id int64, status Status, reason string) (*Task, error) {
+// SetStatus changes the status of a mutable task.
+func (s *Store) SetStatus(id int64, status Status) (*Task, error) {
 	parsed, ok := ParseStatus(string(status))
 	if !ok || parsed == StatusDeleted {
 		return nil, fmt.Errorf("%w: %q", ErrInvalidStatus, status)
 	}
 	return s.UpdateTask(id, func(t *Task) error {
 		t.Status = parsed
-		t.AbortReason = ""
-		if parsed == StatusAborted {
-			t.AbortReason = strings.TrimSpace(reason)
-		}
 		return nil
 	})
 }

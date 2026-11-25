@@ -3,7 +3,7 @@ name: task-cli
 description: >-
   Manage tasks and projects with the `task-cli` binary (single-binary Go CLI that
   stores tasks as Markdown files in a vault folder). Use when the user asks to add,
-  list, view, update, prioritize, start, complete, abort, or delete tasks, or to
+  list, view, update, prioritize, start, complete, or delete tasks, or to
   manage projects — e.g. "add a task", "list my pending tasks", "mark task 3 done",
   "move this to the Backlog project".
 ---
@@ -22,7 +22,7 @@ binary, or `./dist/task-cli` from a source checkout (`make build`).
 - Task file name: `<id>-<slug>.md` (e.g. `Task CLI/0003-ajustar-filtro.md`). IDs are
   global across the vault and never reused (counter `next_id` in `<vault>/.task-cli.yaml`).
 - Task file content: YAML frontmatter (`status`, `priority`, `created`,
-  `updated`, optional `abort_reason`/`deleted`), then `# Title`, then the
+  `updated`, optional `deleted`), then `# Title`, then the
   description in Markdown.
 - `<project>/.project.yaml` holds only an optional `description` (created by `project add`).
 - Config: `~/.config/task-cli/config.yaml` with `vault: <path>`. `task-cli config`
@@ -45,10 +45,10 @@ task-cli project update Backlog --desc "New description"        # --desc "" clea
 
 ## Tasks
 
-Statuses: `pending`, `in-progress`, `done`, `aborted`. Deleted tasks are moved to `<vault>/.trash/` with status `deleted` and no longer show up in any command.
+Statuses: `pending`, `in-progress`, `done`. There is no aborted/cancelled status — to cancel or stop a task, delete it. Deleted tasks are moved to `<vault>/.trash/` with status `deleted` and no longer show up in any command.
 Priorities: `low`, `medium`, `high`, `urgent`.
 
-> **Immutability**: `aborted` and `deleted` tasks cannot be updated, edited, reprioritized or change status.
+> **Immutability**: `deleted` tasks cannot be updated, edited, reprioritized or change status.
 
 ```bash
 task-cli task add "Standalone Task" "Description"         # aliases: create, new
@@ -73,7 +73,6 @@ task-cli task status 1 in-progress
 task-cli task start 1           # set-in-progress
 task-cli task done 1            # set-done
 task-cli task pending 1         # set-pending
-task-cli task abort 1 "Out of scope"   # set-abort, optional reason
 task-cli task delete 1          # move to <vault>/.trash (aliases: del, rm, remove)
 ```
 

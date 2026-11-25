@@ -20,7 +20,7 @@ func printVersion() {
 func printUsage() {
 	fmt.Println("Usage: task-cli [-F <format>] <command> [arguments]")
 	fmt.Println("\nAvailable commands:")
-	fmt.Println("  task [command]                        Manage tasks (subcommands: add, list, view, update, edit, delete, status, prio, start, done, abort)")
+	fmt.Println("  task [command]                        Manage tasks (subcommands: add, list, view, update, edit, delete, status, prio, start, done)")
 	fmt.Println("  project [command]                     Manage projects (subcommands: add, list, view, update)")
 	fmt.Println("  config                                Open the config file in $EDITOR")
 	fmt.Println("  help [command]                        Show help for a command")

@@ -28,7 +28,7 @@ Single-binary Go CLI for task management backed by a **Markdown vault** (folders
 
 - Layout: `<vault>/[<project>/]<id>-<slug>.md`; tasks without project live in the vault root. Only one folder level is scanned.
 - Projects have no code/ID: **project name = folder name** (any folder in the vault root not starting with `.`; spaces/accents allowed; `/`, `\` and control chars rejected by `validateName`). Names are matched case-insensitively. `project add` creates `<project>/.project.yaml` holding only an optional `description` (written via `yaml.Node`, so comments/unknown keys survive; empty description removes the key). `project update --name` renames the folder (tasks move with it).
-- Task file: YAML frontmatter (`status`, `priority`, `created`, `updated`, optional `abort_reason`, `deleted`), then `# Title`, then the description. Unknown frontmatter keys are preserved on rewrite (`taskMeta.Extra`).
+- Task file: YAML frontmatter (`status`, `priority`, `created`, `updated`, optional `deleted`), then `# Title`, then the description. Unknown frontmatter keys are preserved on rewrite (`taskMeta.Extra`).
 - IDs are global: next ID = `max(next_id, highest ID in file names + 1)`. Two files with the same ID make lookups of that ID fail with a "duplicate task ID" error.
 - YAML side files (`.task-cli.yaml`, `.project.yaml`) go through `internal/vault/yamlfile.go` (`decodeYAMLFile`, `editYAMLFile`).
 - Per-vault settings: `<vault>/.task-cli.yaml` (`internal/vault/settings.go`). Holds `next_id`, reserved (written) before the task file is created. It is edited through `yaml.Node` so comments and unknown keys survive; unknown keys are ignored on read (forward compatibility). Vault-level options go here; user/machine options (like the vault path) go in `config.yaml`.
@@ -40,9 +40,9 @@ Single-binary Go CLI for task management backed by a **Markdown vault** (folders
 - Global `-F/--format` is transversal and can appear anywhere. `--vault <dir>` (hidden) and `TASK_CLI_VAULT` override the configured vault; always use a temp vault when manually exercising commands.
 - Each command parses its own `flag.FlagSet`. `splitFlagsAndPosArgs` lets flags appear before or after positionals, but every value-taking flag must be listed in that command's `valueFlags` map or its value becomes a positional argument.
 - `-p/--proj/--project` always takes a project **name** (`add`, `update`, `list`). `update -p none` moves the task back to the vault root.
-- Statuses are `pending`, `in-progress`, `done`, `aborted` (with `abort` accepted as alias); `deleted` is set on soft delete; priorities are `low`, `medium`, `high`, `urgent`. `list` defaults to pending; `-a/--all/all` shows everything except deleted.
+- Statuses are `pending`, `in-progress`, `done`; `deleted` is set on soft delete (there is no aborted/cancelled status — cancelled tasks are deleted); priorities are `low`, `medium`, `high`, `urgent`. `list` defaults to pending; `-a/--all/all` shows everything except deleted.
 - `delete` is a soft delete: the task gets `status: deleted` + `deleted:` timestamp and is moved to `<vault>/.trash/[<project>/]` (`vault.TrashDir`). Trashed tasks are not scanned by queries, but `nextID` scans the trash so their IDs are never reused. There is no restore command (move the file back by hand).
-- Tasks with status `deleted` or `aborted` are immutable: status changes and updates (`update`, `edit`, `prio`, etc.) return an error.
+- Tasks with status `deleted` are immutable: status changes and updates (`update`, `edit`, `prio`, etc.) return an error.
 - `task edit` opens the task's `.md` file itself in `$EDITOR`/`$VISUAL` (default `nano`), then re-saves it through the vault (validates it, bumps `updated`, renames on title change).
 - There are no flat top-level aliases (`add`, `done`, `lp`…); only hierarchical routes and their per-node aliases.
 - TSV list commands print no header at all when there are zero rows. Task TSV rows use `cleanOneLine` for title; keep newline/tab stripping when adding fields, and update the header when adding a column.

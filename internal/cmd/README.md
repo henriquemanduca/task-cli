@@ -16,5 +16,5 @@ Command-line routing, global flag handling and the `project`/`task` command hand
 - Every value-taking flag must be listed in the command's `splitFlagsAndPosArgs` map,
   otherwise its value becomes a positional argument.
 - Projects are referenced by name = folder name (case-insensitive); tasks by numeric ID.
-- `aborted`/`deleted` tasks are immutable (`vault.ErrTaskImmutable`).
+- `deleted` tasks are immutable (`vault.ErrTaskImmutable`).
 - `version`, `help` and `config` never open the vault.

@@ -166,34 +166,31 @@ func TestTaskStatus(t *testing.T) {
 		t.Fatal("expected error setting status deleted")
 	}
 
-	out, err := captureStdout(func() error { return TaskSetAbort(ctx, []string{"1", "Out", "of", "scope"}) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out != "Task 0001 status set to 'aborted' (reason: Out of scope)\n" {
-		t.Errorf("abort: %q", out)
+	for _, st := range []string{"aborted", "abort", "cancel"} {
+		if err := TaskStatus(ctx, []string{"1", st}); err == nil || !strings.Contains(err.Error(), "invalid status") {
+			t.Errorf("expected invalid status error for %q, got %v", st, err)
+		}
 	}
 	out, _ = captureStdout(func() error { return TaskStatus(ctx, []string{"1"}) })
-	if out != "Task 0001 status: aborted (reason: Out of scope)\n" {
-		t.Errorf("query aborted: %q", out)
+	if out != "Task 0001 status: in-progress\n" {
+		t.Errorf("query status: %q", out)
 	}
 }
 
 func TestImmutableTasks(t *testing.T) {
 	ctx := setupTestContext(t)
-	_ = TaskAdd(ctx, []string{"To abort"})  // 1
+	_ = TaskAdd(ctx, []string{"Keep"})      // 1
 	_ = TaskAdd(ctx, []string{"To delete"}) // 2
-	_ = TaskSetAbort(ctx, []string{"1"})
 	_ = TaskDelete(ctx, []string{"2"})
 
 	for _, run := range []func() error{
-		func() error { return TaskUpdate(ctx, []string{"1", "x"}) },
-		func() error { return TaskSetPriority(ctx, []string{"1", "low"}) },
-		func() error { return TaskSetPending(ctx, []string{"1"}) },
-		func() error { return TaskEdit(ctx, []string{"1"}) },
+		func() error { return TaskUpdate(ctx, []string{"2", "x"}) },
+		func() error { return TaskSetPriority(ctx, []string{"2", "low"}) },
+		func() error { return TaskSetPending(ctx, []string{"2"}) },
+		func() error { return TaskEdit(ctx, []string{"2"}) },
 	} {
-		if err := run(); err == nil || !strings.Contains(err.Error(), "deleted or aborted") {
-			t.Errorf("expected immutable error for aborted task, got %v", err)
+		if err := run(); err == nil {
+			t.Error("expected error changing deleted task")
 		}
 	}
 

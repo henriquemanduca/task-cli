@@ -90,7 +90,7 @@ func TestHandWrittenTaskFile(t *testing.T) {
 	}
 
 	// Rewriting keeps unknown keys.
-	if _, err := s.SetStatus(42, StatusDone, ""); err != nil {
+	if _, err := s.SetStatus(42, StatusDone); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(s.Root, "WORK", "0042-hand-made.md"))
@@ -127,11 +127,13 @@ func TestStatusAndDelete(t *testing.T) {
 	s := newStore(t)
 	task, _ := s.Add("T", "", "", "")
 
-	if _, err := s.SetStatus(task.ID, StatusAborted, "why"); err != nil {
+	if _, err := s.SetStatus(task.ID, StatusDone); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SetStatus(task.ID, StatusDone, ""); !errors.Is(err, ErrTaskImmutable) {
-		t.Errorf("expected immutable, got %v", err)
+	for _, st := range []Status{StatusDeleted, "aborted", "abort"} {
+		if _, err := s.SetStatus(task.ID, st); !errors.Is(err, ErrInvalidStatus) {
+			t.Errorf("expected invalid status for %q, got %v", st, err)
+		}
 	}
 
 	if _, err := s.AddProject("P", ""); err != nil {
@@ -168,7 +170,7 @@ func TestStatusAndDelete(t *testing.T) {
 	}
 	tasks, _ := s.List("", "")
 	if len(tasks) != 2 || tasks[0].ID != task.ID || tasks[1].ID != 3 {
-		t.Errorf("expected aborted task and task 3 listed (not the trashed one), got %+v", tasks)
+		t.Errorf("expected task 1 and task 3 listed (not the trashed one), got %+v", tasks)
 	}
 }
 

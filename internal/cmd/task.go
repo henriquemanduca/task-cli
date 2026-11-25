@@ -28,7 +28,7 @@ func taskError(id int64, action string, err error) error {
 	case errors.Is(err, vault.ErrTaskNotFound):
 		return fmt.Errorf("task with ID %d not found", id)
 	case errors.Is(err, vault.ErrTaskImmutable):
-		return fmt.Errorf("cannot %s task with ID %d: task is deleted or aborted", action, id)
+		return fmt.Errorf("cannot %s task with ID %d: task is deleted", action, id)
 	case errors.Is(err, vault.ErrProjectNotFound):
 		return fmt.Errorf("project not found: %w", err)
 	default:
@@ -264,7 +264,7 @@ func (a *TaskListAction) Parse(ctx *Context, args []string) (TaskListArgs, error
 	} else if posStatus != "" {
 		status, ok := vault.ParseStatus(posStatus)
 		if !ok || status == vault.StatusDeleted {
-			return TaskListArgs{}, fmt.Errorf("invalid status '%s'. Valid options: all, pending, in-progress, done, aborted", posStatus)
+			return TaskListArgs{}, fmt.Errorf("invalid status '%s'. Valid options: all, pending, in-progress, done", posStatus)
 		}
 		statusFilter = string(status)
 	} else {
@@ -409,9 +409,6 @@ func (a *TaskViewAction) Format(ctx *Context, w io.Writer, res *TaskViewResult) 
 	if res.ShowTime {
 		fmt.Fprintf(w, "Created At: %s\n", t.CreatedAt.Local().Format("2006-01-02 15:04:05"))
 		fmt.Fprintf(w, "Updated At: %s\n", t.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
-	}
-	if t.AbortReason != "" {
-		fmt.Fprintf(w, "Abort Note: %s\n", t.AbortReason)
 	}
 	fmt.Fprintf(w, "File: %s\n", t.Path)
 	fmt.Fprintf(w, "Description:\n")
@@ -726,14 +723,12 @@ type TaskStatusArgs struct {
 	ID      int64
 	IsQuery bool
 	Status  vault.Status
-	Reason  string
 }
 
 // TaskStatusResult holds the outcome of a task status query or update.
 type TaskStatusResult struct {
 	ID      int64
 	Status  vault.Status
-	Reason  string
 	IsQuery bool
 }
 
@@ -743,7 +738,7 @@ type TaskStatusAction struct{}
 // Parse parses arguments for status query or update, supporting both argument order permutations.
 func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, error) {
 	if len(args) < 1 {
-		return TaskStatusArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task status <id> <status> [reason]")
+		return TaskStatusArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task status <id> <status>")
 	}
 
 	// 1 argument: query current status
@@ -758,19 +753,16 @@ func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, e
 	// 2 or more arguments: set status
 	var id int64
 	var rawStatus string
-	var remaining []string
 
 	id1, err1 := parseTaskID(args[0])
 	if err1 == nil {
 		id = id1
 		rawStatus = args[1]
-		remaining = args[2:]
 	} else {
 		id2, err2 := parseTaskID(args[1])
 		if err2 == nil {
 			id = id2
 			rawStatus = args[0]
-			remaining = args[2:]
 		} else {
 			return TaskStatusArgs{}, fmt.Errorf("invalid task ID: %s", args[0])
 		}
@@ -784,24 +776,16 @@ func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, e
 		statusLower = string(vault.StatusInProgress)
 	case "complete", "completed", "finish", "finished":
 		statusLower = string(vault.StatusDone)
-	case "cancel", "cancelled":
-		statusLower = string(vault.StatusAborted)
 	}
 	targetStatus, ok := vault.ParseStatus(statusLower)
 	if !ok || targetStatus == vault.StatusDeleted {
-		return TaskStatusArgs{}, fmt.Errorf("invalid status '%s'. Valid options: pending, in-progress, done, aborted", rawStatus)
-	}
-
-	var abortReason string
-	if targetStatus == vault.StatusAborted {
-		abortReason = strings.TrimSpace(strings.Join(remaining, " "))
+		return TaskStatusArgs{}, fmt.Errorf("invalid status '%s'. Valid options: pending, in-progress, done", rawStatus)
 	}
 
 	return TaskStatusArgs{
 		ID:      id,
 		IsQuery: false,
 		Status:  targetStatus,
-		Reason:  abortReason,
 	}, nil
 }
 
@@ -812,31 +796,22 @@ func (a *TaskStatusAction) Execute(ctx *Context, args TaskStatusArgs) (*TaskStat
 		if err != nil {
 			return nil, taskError(args.ID, "view", err)
 		}
-		return &TaskStatusResult{ID: t.ID, Status: t.Status, Reason: t.AbortReason, IsQuery: true}, nil
+		return &TaskStatusResult{ID: t.ID, Status: t.Status, IsQuery: true}, nil
 	}
 
-	if _, err := ctx.Store.SetStatus(args.ID, args.Status, args.Reason); err != nil {
+	if _, err := ctx.Store.SetStatus(args.ID, args.Status); err != nil {
 		return nil, taskError(args.ID, "change status of", err)
 	}
-	return &TaskStatusResult{ID: args.ID, Status: args.Status, Reason: args.Reason}, nil
+	return &TaskStatusResult{ID: args.ID, Status: args.Status}, nil
 }
 
 // Format renders the status query or update message.
 func (a *TaskStatusAction) Format(ctx *Context, w io.Writer, res *TaskStatusResult) error {
 	if res.IsQuery {
-		if res.Status == vault.StatusAborted && res.Reason != "" {
-			fmt.Fprintf(w, "Task %04d status: %s (reason: %s)\n", res.ID, res.Status, res.Reason)
-		} else {
-			fmt.Fprintf(w, "Task %04d status: %s\n", res.ID, res.Status)
-		}
+		fmt.Fprintf(w, "Task %04d status: %s\n", res.ID, res.Status)
 		return nil
 	}
-
-	if res.Status == vault.StatusAborted && res.Reason != "" {
-		fmt.Fprintf(w, "Task %04d status set to 'aborted' (reason: %s)\n", res.ID, res.Reason)
-	} else {
-		fmt.Fprintf(w, "Task %04d status set to '%s'\n", res.ID, res.Status)
-	}
+	fmt.Fprintf(w, "Task %04d status set to '%s'\n", res.ID, res.Status)
 	return nil
 }
 
@@ -920,14 +895,13 @@ func TaskSetPriority(ctx *Context, args []string) error {
 }
 
 // -----------------------------------------------------------------------------
-// Direct Status Helpers (set-pending, set-in-progress, set-done, set-abort)
+// Direct Status Helpers (set-pending, set-in-progress, set-done)
 // -----------------------------------------------------------------------------
 
 // TaskSetStatusArgs represents the argument schema for dedicated status transition commands.
 type TaskSetStatusArgs struct {
 	ID          int64
 	Status      vault.Status
-	Reason      string
 	CommandName string
 }
 
@@ -935,7 +909,6 @@ type TaskSetStatusArgs struct {
 type TaskSetStatusResult struct {
 	ID     int64
 	Status vault.Status
-	Reason string
 }
 
 // TaskSetStatusAction encapsulates schema parsing, execution, and output formatting for dedicated status transitions.
@@ -946,22 +919,6 @@ type TaskSetStatusAction struct {
 
 // Parse parses arguments for status transitions.
 func (a *TaskSetStatusAction) Parse(ctx *Context, args []string) (TaskSetStatusArgs, error) {
-	if a.Status == vault.StatusAborted {
-		if len(args) < 1 {
-			return TaskSetStatusArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task set-abort <id> [reason]")
-		}
-		id, err := parseTaskID(args[0])
-		if err != nil {
-			return TaskSetStatusArgs{}, err
-		}
-		return TaskSetStatusArgs{
-			ID:          id,
-			Status:      vault.StatusAborted,
-			Reason:      strings.TrimSpace(strings.Join(args[1:], " ")),
-			CommandName: a.CommandName,
-		}, nil
-	}
-
 	if len(args) < 1 {
 		return TaskSetStatusArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task %s <id>", a.CommandName)
 	}
@@ -980,23 +937,18 @@ func (a *TaskSetStatusAction) Parse(ctx *Context, args []string) (TaskSetStatusA
 
 // Execute applies the status update.
 func (a *TaskSetStatusAction) Execute(ctx *Context, args TaskSetStatusArgs) (*TaskSetStatusResult, error) {
-	if _, err := ctx.Store.SetStatus(args.ID, args.Status, args.Reason); err != nil {
+	if _, err := ctx.Store.SetStatus(args.ID, args.Status); err != nil {
 		return nil, taskError(args.ID, "change status of", err)
 	}
 
 	return &TaskSetStatusResult{
 		ID:     args.ID,
 		Status: args.Status,
-		Reason: args.Reason,
 	}, nil
 }
 
 // Format renders the status transition confirmation.
 func (a *TaskSetStatusAction) Format(ctx *Context, w io.Writer, res *TaskSetStatusResult) error {
-	if res.Status == vault.StatusAborted && res.Reason != "" {
-		_, err := fmt.Fprintf(w, "Task %04d status set to 'aborted' (reason: %s)\n", res.ID, res.Reason)
-		return err
-	}
 	_, err := fmt.Fprintf(w, "Task %04d status set to '%s'\n", res.ID, res.Status)
 	return err
 }
@@ -1005,7 +957,6 @@ var (
 	TaskSetPendingHandler    = NewActionHandler(&TaskSetStatusAction{Status: vault.StatusPending, CommandName: "set-pending"})
 	TaskSetInProgressHandler = NewActionHandler(&TaskSetStatusAction{Status: vault.StatusInProgress, CommandName: "set-in-progress"})
 	TaskSetDoneHandler       = NewActionHandler(&TaskSetStatusAction{Status: vault.StatusDone, CommandName: "set-done"})
-	TaskSetAbortHandler      = NewActionHandler(&TaskSetStatusAction{Status: vault.StatusAborted, CommandName: "set-abort"})
 )
 
 // TaskSetPending define o status da tarefa como 'pending'.
@@ -1021,9 +972,4 @@ func TaskSetInProgress(ctx *Context, args []string) error {
 // TaskSetDone define o status da tarefa como 'done'.
 func TaskSetDone(ctx *Context, args []string) error {
 	return TaskSetDoneHandler.Run(ctx, args)
-}
-
-// TaskSetAbort define o status da tarefa como 'aborted' com motivo opcional.
-func TaskSetAbort(ctx *Context, args []string) error {
-	return TaskSetAbortHandler.Run(ctx, args)
 }

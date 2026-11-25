@@ -343,8 +343,8 @@ func NewRootCommand() *Command {
 		&Command{
 			Name:        "status",
 			Aliases:     []string{"set-status"},
-			Description: "Show or set task status (pending, in-progress, done, aborted)",
-			Usage:       "task-cli task status <id> [<status> [reason]]",
+			Description: "Show or set task status (pending, in-progress, done)",
+			Usage:       "task-cli task status <id> [<status>]",
 			Run:         TaskStatus,
 		},
 		&Command{
@@ -374,13 +374,6 @@ func NewRootCommand() *Command {
 			Description: "Set task status to done",
 			Usage:       "task-cli task set-done <id>",
 			Run:         TaskSetDone,
-		},
-		&Command{
-			Name:        "set-abort",
-			Aliases:     []string{"abort", "aborted", "set-aborted"},
-			Description: "Set task status to aborted (optional reason)",
-			Usage:       "task-cli task set-abort <id> [reason]",
-			Run:         TaskSetAbort,
 		},
 	)
 

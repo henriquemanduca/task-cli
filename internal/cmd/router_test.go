@@ -400,8 +400,11 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 	if taskNode.FindSubcommand("priority") == nil || taskNode.FindSubcommand("set-prio") == nil {
 		t.Errorf("expected 'priority' and 'set-prio' aliases under task")
 	}
-	if taskNode.FindSubcommand("done") == nil || taskNode.FindSubcommand("start") == nil || taskNode.FindSubcommand("abort") == nil {
-		t.Errorf("expected 'done', 'start', 'abort' subcommands under task")
+	if taskNode.FindSubcommand("done") == nil || taskNode.FindSubcommand("start") == nil {
+		t.Errorf("expected 'done' and 'start' subcommands under task")
+	}
+	if taskNode.FindSubcommand("abort") != nil || taskNode.FindSubcommand("set-abort") != nil {
+		t.Errorf("expected 'abort' subcommands to be removed")
 	}
 
 	if taskNode.FindSubcommand("doc") != nil {
@@ -496,23 +499,9 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 		t.Fatalf("expected status done, got %v", task.Status)
 	}
 
-	// 9. task status set to abort with reason
-	err = Root.Execute(ctx, []string{"task", "status", "1", "abort", "Requirements changed"})
-	if err != nil {
-		t.Fatalf("unexpected error setting abort: %v", err)
-	}
-	task, err = ctx.Store.GetTask(1)
-	if err != nil || task.Status != "aborted" {
-		t.Fatalf("expected status aborted, got %v", task.Status)
-	}
-	if task.AbortReason != "Requirements changed" {
-		t.Fatalf("expected abort reason 'Requirements changed', got %v", task.AbortReason)
-	}
-
-	// Cannot change status of aborted task
-	err = Root.Execute(ctx, []string{"task", "done", "1"})
-	if err == nil {
-		t.Fatal("expected error running 'task done' on aborted task, got nil")
+	// 9. aborted is no longer a valid status
+	if err := Root.Execute(ctx, []string{"task", "status", "1", "aborted"}); err == nil {
+		t.Fatal("expected error setting status aborted, got nil")
 	}
 
 	// 10. task delete

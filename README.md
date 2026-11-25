@@ -23,11 +23,10 @@ Task file:
 
 ```markdown
 ---
-status: pending          # pending | in-progress | done | aborted | deleted
+status: pending          # pending | in-progress | done | deleted
 priority: high           # low | medium | high | urgent
 created: 2026-11-25T10:00:00-03:00
 updated: 2026-11-25T10:00:00-03:00
-abort_reason: ...        # only for aborted tasks
 deleted: ...             # only for soft-deleted tasks
 ---
 # Ajustar filtro
@@ -82,7 +81,7 @@ task-cli project update "Task CLI" --desc "New description"   # --desc "" clears
 task-cli task add "Title" "Description"                       # vault root
 task-cli task add -p "Task CLI" --priority high "Title"       # inside project "Task CLI"
 task-cli task list                                            # pending (default)
-task-cli task list -a | --done | in-progress | aborted        # status filters
+task-cli task list -a | --done | in-progress                  # status filters
 task-cli task list -p "Task CLI" -t -n                        # project filter, date column, no header
 task-cli task view 3 [-t]                                     # alias: show, get
 task-cli task update 3 "New title" "New description"          # alias: mod
@@ -90,7 +89,6 @@ task-cli task update 3 -p Other | -p none --priority urgent   # move / detach / 
 task-cli task edit 3                                          # open the .md in $EDITOR (default nano)
 task-cli task status 3 [in-progress]                          # show or set status
 task-cli task start 3 | done 3 | pending 3                    # status shortcuts
-task-cli task abort 3 "Reason"                                # aborted tasks become read-only
 task-cli task prio 3 urgent
 task-cli task delete 3                                        # move to .trash (status: deleted)
 ```
@@ -100,7 +98,8 @@ Global flags: `-F/--format tsv|table` (anywhere in the command line), `-h/--help
 
 ## Rules
 
-- `aborted` and `deleted` tasks are immutable: updates, edits and status changes fail.
+- There is no aborted/cancelled status: a task that is stopped or cancelled is deleted.
+- `deleted` tasks are immutable: updates, edits and status changes fail.
 - `delete` moves the task to `<vault>/.trash/[<project>/]` (same file name, marked
   `status: deleted` + `deleted:` date). Trashed tasks are invisible to every command;
   their IDs are never reused. To restore one, move the file back and set its status.
