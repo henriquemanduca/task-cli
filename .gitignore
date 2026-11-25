@@ -16,11 +16,3 @@ task-cli
 .vscode/
 *.swp
 *.swo
-
-# Local SQLite databases
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-
-tasks.sqlite

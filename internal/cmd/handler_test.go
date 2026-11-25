@@ -158,8 +158,7 @@ func TestActionHandler_CommandIntegration(t *testing.T) {
 }
 
 func TestDecoupledActions_IsolatedPipeline(t *testing.T) {
-	ctx, cleanup := setupTestContext(t)
-	defer cleanup()
+	ctx := setupTestContext(t)
 
 	// 1. Test ProjectAddAction decoupled
 	projectAction := &ProjectAddAction{}
@@ -171,11 +170,11 @@ func TestDecoupledActions_IsolatedPipeline(t *testing.T) {
 	}
 
 	// Parse success
-	pArgs, err := projectAction.Parse(ctx, []string{"TDEC", "Decoupled Project", "Decoupled Description"})
+	pArgs, err := projectAction.Parse(ctx, []string{"TDEC", "Decoupled", "Description"})
 	if err != nil {
 		t.Fatalf("unexpected error parsing project add args: %v", err)
 	}
-	if pArgs.Code != "TDEC" || pArgs.Name != "Decoupled Project" {
+	if pArgs.Name != "TDEC" || pArgs.Description != "Decoupled Description" {
 		t.Errorf("unexpected parsed project args: %+v", pArgs)
 	}
 
@@ -184,8 +183,8 @@ func TestDecoupledActions_IsolatedPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error executing project add: %v", err)
 	}
-	if project.Code != "TDEC" {
-		t.Errorf("expected project code 'TDEC', got %s", project.Code)
+	if project.Name != "TDEC" {
+		t.Errorf("expected project name 'TDEC', got %s", project.Name)
 	}
 
 	// Format
@@ -208,11 +207,11 @@ func TestDecoupledActions_IsolatedPipeline(t *testing.T) {
 	}
 
 	// Parse success
-	tArgs, err := taskAction.Parse(ctx, []string{"-p", "1", "--priority", "high", "Isolated Task", "Task details"})
+	tArgs, err := taskAction.Parse(ctx, []string{"-p", "TDEC", "--priority", "high", "Isolated Task", "Task details"})
 	if err != nil {
 		t.Fatalf("unexpected error parsing task add args: %v", err)
 	}
-	if tArgs.Title != "Isolated Task" || tArgs.Priority != "high" || tArgs.ProjectID == nil || *tArgs.ProjectID != 1 {
+	if tArgs.Title != "Isolated Task" || tArgs.Priority != "high" || tArgs.ProjectName != "TDEC" {
 		t.Errorf("unexpected parsed task args: %+v", tArgs)
 	}
 
@@ -221,7 +220,7 @@ func TestDecoupledActions_IsolatedPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error executing task add: %v", err)
 	}
-	if tResult.Task.Title != "Isolated Task" || tResult.ProjectRef != "TDEC" {
+	if tResult.Task.Title != "Isolated Task" || tResult.Task.ProjectName != "TDEC" {
 		t.Errorf("unexpected task result: %+v", tResult)
 	}
 
@@ -243,7 +242,7 @@ func TestDecoupledActions_IsolatedPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error parsing task list args: %v", err)
 	}
-	if lArgs.StatusFilter != "" || lArgs.ProjectCode != "TDEC" {
+	if lArgs.StatusFilter != "" || lArgs.ProjectName != "TDEC" {
 		t.Errorf("unexpected parsed list args: %+v", lArgs)
 	}
 

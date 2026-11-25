@@ -3,8 +3,6 @@ package cmd
 import (
 	"bytes"
 	"errors"
-	"fmt"
-	"os"
 	"strings"
 	"testing"
 )
@@ -336,7 +334,6 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 	// Verify top-level commands in Root
 	expectedCmds := []string{
 		"project", "task",
-		"doc-add", "doc-list", "doc-del", "export", "import",
 	}
 
 	for _, name := range expectedCmds {
@@ -348,15 +345,9 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 
 	// Verify aliases in Root
 	expectedAliases := map[string]string{
-		"proj":       "project",
-		"t":          "task",
-		"tsk":        "task",
-		"attach":     "doc-add",
-		"docs":       "doc-list",
-		"doc-rm":     "doc-del",
-		"doc-remove": "doc-del",
-		"exp":        "export",
-		"imp":        "import",
+		"proj": "project",
+		"t":    "task",
+		"tsk":  "task",
 	}
 
 	for alias, canonical := range expectedAliases {
@@ -413,26 +404,8 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 		t.Errorf("expected 'done', 'start', 'abort' subcommands under task")
 	}
 
-	docNode := taskNode.FindSubcommand("doc")
-	if docNode == nil {
-		t.Fatal("expected 'doc' subcommand under task")
-	}
-	if taskNode.FindSubcommand("docs") == nil || taskNode.FindSubcommand("d") == nil {
-		t.Errorf("expected 'docs' and 'd' aliases for 'doc' under task")
-	}
-	for _, sub := range []string{"add", "list", "remove", "open", "prune"} {
-		if docNode.FindSubcommand(sub) == nil {
-			t.Errorf("expected subcommand %q under 'task doc'", sub)
-		}
-	}
-	if docNode.FindSubcommand("attach") == nil {
-		t.Errorf("expected 'attach' alias under 'task doc'")
-	}
-	if docNode.FindSubcommand("ls") == nil {
-		t.Errorf("expected 'ls' alias under 'task doc'")
-	}
-	if docNode.FindSubcommand("rm") == nil || docNode.FindSubcommand("del") == nil || docNode.FindSubcommand("delete") == nil {
-		t.Errorf("expected 'rm', 'del', 'delete' aliases under 'task doc'")
+	if taskNode.FindSubcommand("doc") != nil {
+		t.Errorf("expected attachments ('task doc') to be removed")
 	}
 
 	// Test Execute with unknown command
@@ -446,8 +419,7 @@ func TestRouter_DefaultRootAndCmdExecute(t *testing.T) {
 }
 
 func TestRouter_TaskDomainTree(t *testing.T) {
-	ctx, cleanup := setupTestContext(t)
-	defer cleanup()
+	ctx := setupTestContext(t)
 
 	// 1. task add via Root dispatch
 	err := Root.Execute(ctx, []string{"task", "add", "Tree Root Task", "Tree Description", "--priority", "low"})
@@ -488,7 +460,7 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error running 'task prio': %v", err)
 	}
-	task, err := ctx.Store.GetTaskByID(ctx.Context(), 1)
+	task, err := ctx.Store.GetTask(1)
 	if err != nil || task.Priority != "urgent" {
 		t.Fatalf("expected priority urgent, got %v (err: %v)", task.Priority, err)
 	}
@@ -509,7 +481,7 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting in-progress: %v", err)
 	}
-	task, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
+	task, err = ctx.Store.GetTask(1)
 	if err != nil || task.Status != "in-progress" {
 		t.Fatalf("expected status in-progress, got %v", task.Status)
 	}
@@ -519,7 +491,7 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error running 'task done': %v", err)
 	}
-	task, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
+	task, err = ctx.Store.GetTask(1)
 	if err != nil || task.Status != "done" {
 		t.Fatalf("expected status done, got %v", task.Status)
 	}
@@ -529,11 +501,11 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error setting abort: %v", err)
 	}
-	task, err = ctx.Store.GetTaskByID(ctx.Context(), 1)
+	task, err = ctx.Store.GetTask(1)
 	if err != nil || task.Status != "aborted" {
 		t.Fatalf("expected status aborted, got %v", task.Status)
 	}
-	if task.AbortReason == nil || *task.AbortReason != "Requirements changed" {
+	if task.AbortReason != "Requirements changed" {
 		t.Fatalf("expected abort reason 'Requirements changed', got %v", task.AbortReason)
 	}
 
@@ -566,110 +538,10 @@ func TestRouter_TaskDomainTree(t *testing.T) {
 		t.Fatalf("expected handled=true, err=nil for Execute(Root, 'task', ['list']), got handled=%v, err=%v", handled, err)
 	}
 
-	// 13. Legacy flat commands are handled and routed via flat aliases
-	handled, err = Execute(Root, ctx, "add", []string{"Flat Add Task"})
-	if !handled || err != nil {
-		t.Fatalf("expected handled=true, err=nil for legacy flat 'add', got handled=%v, err=%v", handled, err)
-	}
-
-	handled, err = Execute(Root, ctx, "list", []string{})
-	if !handled || err != nil {
-		t.Fatalf("expected handled=true, err=nil for legacy flat 'list', got handled=%v, err=%v", handled, err)
-	}
-
-	handled, err = Execute(Root, ctx, "projects", []string{})
-	if !handled || err != nil {
-		t.Fatalf("expected handled=true, err=nil for legacy flat 'projects', got handled=%v, err=%v", handled, err)
-	}
-}
-
-func TestRouter_TaskDocSubcommands(t *testing.T) {
-	ctx, cleanup := setupTestContext(t)
-	defer cleanup()
-
-	tempDir := t.TempDir()
-	docFile1 := tempDir + "/spec.pdf"
-	docFile2 := tempDir + "/notes.txt"
-	if err := os.WriteFile(docFile1, []byte("pdf dummy data"), 0644); err != nil {
-		t.Fatalf("failed to create temp doc file: %v", err)
-	}
-	if err := os.WriteFile(docFile2, []byte("notes dummy data"), 0644); err != nil {
-		t.Fatalf("failed to create temp doc file 2: %v", err)
-	}
-
-	// 1. Create a task to attach to
-	task, err := ctx.Store.Add(ctx.Context(), "Test Doc Hierarchy", "Testing doc subcommands", nil, "medium")
-	if err != nil {
-		t.Fatalf("failed to create task: %v", err)
-	}
-
-	// 2. task doc help when called without args
-	out, err := captureStdout(func() error {
-		return Root.Execute(ctx, []string{"task", "doc"})
-	})
-	if err != nil {
-		t.Fatalf("unexpected error running 'task doc': %v", err)
-	}
-	if !strings.Contains(out, "Manage task document attachments") || !strings.Contains(out, "add, attach") {
-		t.Fatalf("expected doc help output, got:\n%s", out)
-	}
-
-	// 3. task doc add via full path
-	taskIDStr := fmt.Sprintf("%d", task.ID)
-	err = Root.Execute(ctx, []string{"task", "doc", "add", taskIDStr, docFile1, "Architecture Doc"})
-	if err != nil {
-		t.Fatalf("unexpected error running 'task doc add': %v", err)
-	}
-
-	// 4. task doc add via aliases 't d attach'
-	err = Root.Execute(ctx, []string{"t", "d", "attach", taskIDStr, docFile2})
-	if err != nil {
-		t.Fatalf("unexpected error running 't d attach': %v", err)
-	}
-
-	// 5. task doc list via alias 'task doc ls'
-	out, err = captureStdout(func() error {
-		return Root.Execute(ctx, []string{"task", "doc", "ls", taskIDStr})
-	})
-	if err != nil {
-		t.Fatalf("unexpected error running 'task doc ls': %v", err)
-	}
-	if !strings.Contains(out, "Architecture Doc") || !strings.Contains(out, "notes.txt") {
-		t.Fatalf("expected both documents listed, got:\n%s", out)
-	}
-
-	// 6. List documents via alias 't docs list'
-	out, err = captureStdout(func() error {
-		return Root.Execute(ctx, []string{"t", "docs", "list", taskIDStr})
-	})
-	if err != nil {
-		t.Fatalf("unexpected error running 't docs list': %v", err)
-	}
-	if !strings.Contains(out, "Architecture Doc") {
-		t.Fatalf("expected document listed via 't docs list', got:\n%s", out)
-	}
-
-	docs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
-	if err != nil || len(docs) != 2 {
-		t.Fatalf("expected 2 documents, got %d (err: %v)", len(docs), err)
-	}
-
-	// 7. Remove first document via 'task doc remove'
-	firstDocID := fmt.Sprintf("%d", docs[0].ID)
-	err = Root.Execute(ctx, []string{"task", "doc", "remove", firstDocID})
-	if err != nil {
-		t.Fatalf("unexpected error running 'task doc remove': %v", err)
-	}
-
-	// 8. Remove second document via alias 't doc rm'
-	secondDocID := fmt.Sprintf("%d", docs[1].ID)
-	err = Root.Execute(ctx, []string{"t", "doc", "rm", secondDocID})
-	if err != nil {
-		t.Fatalf("unexpected error running 't doc rm': %v", err)
-	}
-
-	remainingDocs, err := ctx.Store.ListDocuments(ctx.Context(), task.ID)
-	if err != nil || len(remainingDocs) != 0 {
-		t.Fatalf("expected 0 documents remaining, got %d (err: %v)", len(remainingDocs), err)
+	// 13. Legacy flat aliases were removed
+	for _, legacy := range []string{"add", "list", "projects", "done", "attach", "export", "import"} {
+		if handled, _ := Execute(Root, ctx, legacy, nil); handled {
+			t.Errorf("expected legacy flat command %q to be unhandled", legacy)
+		}
 	}
 }

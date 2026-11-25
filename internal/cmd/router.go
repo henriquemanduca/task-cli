@@ -21,9 +21,8 @@ type Command struct {
 	Handler     Handler
 	Subcommands []*Command
 
-	parent         *Command
-	out            io.Writer
-	useFlatAliases bool
+	parent *Command
+	out    io.Writer
 }
 
 // SetHandler configures a Handler for this command, synchronizing Run.
@@ -61,14 +60,8 @@ func (c *Command) FindSubcommand(nameOrAlias string) *Command {
 
 // FindCommand resolves a chain of names or aliases sequentially from this command.
 func (c *Command) FindCommand(names ...string) *Command {
-	lookupNames := names
-	if c.useFlatAliases && len(names) == 1 {
-		if targetPath, ok := ResolveFlatAlias(names[0]); ok {
-			lookupNames = targetPath
-		}
-	}
 	current := c
-	for _, name := range lookupNames {
+	for _, name := range names {
 		current = current.FindSubcommand(name)
 		if current == nil {
 			return nil
@@ -125,10 +118,6 @@ func (c *Command) Resolve(args []string) (*Command, []string) {
 	current := c
 	remaining := args
 
-	if c.useFlatAliases {
-		remaining = ExpandAliases(args)
-	}
-
 	for len(remaining) > 0 {
 		arg := remaining[0]
 		sub := current.FindSubcommand(arg)
@@ -143,7 +132,7 @@ func (c *Command) Resolve(args []string) (*Command, []string) {
 }
 
 // Execute resolves arguments against the command tree and runs the target command,
-// handling hierarchical help and argument delegation. Global flags (--db/--format)
+// handling hierarchical help and argument delegation. Global flags (--vault/--format)
 // are resolved once by ResolveContext before dispatch.
 func (c *Command) Execute(ctx *Context, args []string) error {
 	if ctx == nil {
@@ -157,11 +146,6 @@ func (c *Command) Execute(ctx *Context, args []string) error {
 		}
 		target, _ := c.Resolve(args[1:])
 		return target.PrintHelp(nil)
-	}
-
-	if c.useFlatAliases {
-		// Kept here for callers that inspect args before Resolve; Resolve is idempotent.
-		args = ExpandAliases(args)
 	}
 
 	target, remaining := c.Resolve(args)
@@ -269,43 +253,42 @@ func (c *Command) PrintHelp(w io.Writer) error {
 // NewRootCommand creates the root command with all built-in CLI commands attached.
 func NewRootCommand() *Command {
 	root := &Command{
-		Name:           "task-cli",
-		Description:    "Single-binary CLI for task management backed by SQLite",
-		useFlatAliases: true,
+		Name:        "task-cli",
+		Description: "Single-binary CLI for task management backed by a Markdown vault",
 	}
 
 	projectCmd := &Command{
 		Name:        "project",
 		Aliases:     []string{"proj"},
-		Description: "Manage projects (creation, listing, details)",
+		Description: "Manage projects (vault folders)",
 	}
 	projectCmd.AddCommand(
 		&Command{
 			Name:        "add",
 			Aliases:     []string{"create"},
-			Description: "Create a new project",
-			Usage:       "task-cli project add <code> <name> [description]",
+			Description: "Create a new project folder (with .project.yaml)",
+			Usage:       "task-cli project add <name> [description]",
 			Run:         ProjectAdd,
 		},
 		&Command{
 			Name:        "list",
 			Aliases:     []string{"ls"},
 			Description: "List all projects (default: TSV; -F table for formatted view)",
-			Usage:       "task-cli project list [-d] [-t] [-n] [-F <fmt>]",
+			Usage:       "task-cli project list [-d] [-n] [-F <fmt>]",
 			Run:         ProjectList,
 		},
 		&Command{
 			Name:        "view",
 			Aliases:     []string{"show"},
-			Description: "View project details (optional: -t show timestamps)",
-			Usage:       "task-cli project view <code|id> [-t]",
+			Description: "View project details",
+			Usage:       "task-cli project view <name>",
 			Run:         ProjectView,
 		},
 		&Command{
 			Name:        "update",
 			Aliases:     []string{"edit", "mod"},
-			Description: "Update project name and/or description",
-			Usage:       "task-cli project update <code|id> [--name <name>] [--desc <desc>]",
+			Description: "Rename a project (folder) and/or update its description",
+			Usage:       "task-cli project update <name> [--name <new name>] [--desc <description>]",
 			Run:         ProjectUpdate,
 		},
 	)
@@ -313,64 +296,21 @@ func NewRootCommand() *Command {
 	taskCmd := &Command{
 		Name:        "task",
 		Aliases:     []string{"t", "tsk"},
-		Description: "Manage tasks (creation, listing, update, status, doc)",
+		Description: "Manage tasks (Markdown files in the vault)",
 	}
-
-	docCmd := &Command{
-		Name:        "doc",
-		Aliases:     []string{"docs", "d"},
-		Description: "Manage task document attachments (add, list, remove, open, prune)",
-	}
-	docCmd.AddCommand(
-		&Command{
-			Name:        "add",
-			Aliases:     []string{"attach"},
-			Description: "Link a document to a task",
-			Usage:       "task-cli task doc add <task_id> <file_path> [name] [--type <type>] [--copy] [--link]",
-			Run:         DocAdd,
-		},
-		&Command{
-			Name:        "list",
-			Aliases:     []string{"ls"},
-			Description: "List documents linked to a task",
-			Usage:       "task-cli task doc list <task_id>",
-			Run:         DocList,
-		},
-		&Command{
-			Name:        "remove",
-			Aliases:     []string{"rm", "del", "delete"},
-			Description: "Remove a linked document by ID",
-			Usage:       "task-cli task doc remove <doc_id>",
-			Run:         DocDelete,
-		},
-		&Command{
-			Name:        "open",
-			Description: "Open task attachment directory or reveal document in file manager",
-			Usage:       "task-cli task doc open <task_id> [--doc <doc_id>]",
-			Run:         DocOpen,
-		},
-		&Command{
-			Name:        "prune",
-			Description: "Audit and clean orphaned attachment files",
-			Usage:       "task-cli task doc prune [--dry-run]",
-			Run:         DocPrune,
-		},
-	)
-
 	taskCmd.AddCommand(
-		docCmd,
 		&Command{
 			Name:        "add",
 			Aliases:     []string{"create", "new"},
-			Description: "Add a new task (optionally linked to a project via -p)",
-			Usage:       "task-cli task add [-p <id>] [--priority <prio>] <title> [description]",
+			Description: "Add a new task (optionally inside a project via -p)",
+			Usage:       "task-cli task add [-p <project>] [--priority <prio>] <title> [description]",
 			Run:         TaskAdd,
 		},
 		&Command{
 			Name:        "list",
 			Aliases:     []string{"ls"},
 			Description: "List tasks (default: TSV, pending; -F table for formatted view)",
-			Usage:       "task-cli task list [status] [-p <code>] [-a] [--done] [-t] [-n] [-F <fmt>]",
+			Usage:       "task-cli task list [status] [-p <project>] [-a] [--done] [-t] [-n] [-F <fmt>]",
 			Run:         TaskList,
 		},
 		&Command{
@@ -384,27 +324,27 @@ func NewRootCommand() *Command {
 			Name:        "update",
 			Aliases:     []string{"mod"},
 			Description: "Update a task's title, description, project (-p), priority",
-			Usage:       "task-cli task update <id> [-p <id>] [--priority <prio>] [title] [description]",
+			Usage:       "task-cli task update <id> [-p <project|none>] [--priority <prio>] [title] [description]",
 			Run:         TaskUpdate,
 		},
 		&Command{
 			Name:        "edit",
-			Description: "Edit task description in an external editor (default: nano)",
+			Description: "Open the task's Markdown file in $EDITOR (default: nano)",
 			Usage:       "task-cli task edit <id>",
 			Run:         TaskEdit,
 		},
 		&Command{
 			Name:        "delete",
 			Aliases:     []string{"del", "rm", "remove"},
-			Description: "Soft delete a task by ID",
+			Description: "Move a task to the vault trash (.trash)",
 			Usage:       "task-cli task delete <id>",
 			Run:         TaskDelete,
 		},
 		&Command{
 			Name:        "status",
 			Aliases:     []string{"set-status"},
-			Description: "Set task status (pending, in-progress, done, aborted)",
-			Usage:       "task-cli task status <id> <status> [reason]",
+			Description: "Show or set task status (pending, in-progress, done, aborted)",
+			Usage:       "task-cli task status <id> [<status> [reason]]",
 			Run:         TaskStatus,
 		},
 		&Command{
@@ -444,92 +384,12 @@ func NewRootCommand() *Command {
 		},
 	)
 
-	rootDocCmd := &Command{
-		Name:        "doc",
-		Aliases:     []string{"d"},
-		Description: "Manage task document attachments (add, list, remove, open, prune)",
-	}
-	rootDocCmd.AddCommand(
-		&Command{
-			Name:        "add",
-			Aliases:     []string{"attach"},
-			Description: "Link a document to a task",
-			Usage:       "task-cli doc add <task_id> <file_path> [name] [--type <type>] [--copy] [--link]",
-			Run:         DocAdd,
-		},
-		&Command{
-			Name:        "list",
-			Aliases:     []string{"ls"},
-			Description: "List documents linked to a task",
-			Usage:       "task-cli doc list <task_id>",
-			Run:         DocList,
-		},
-		&Command{
-			Name:        "remove",
-			Aliases:     []string{"rm", "del", "delete"},
-			Description: "Remove a linked document by ID",
-			Usage:       "task-cli doc remove <doc_id>",
-			Run:         DocDelete,
-		},
-		&Command{
-			Name:        "open",
-			Description: "Open task attachment directory or reveal document in file manager",
-			Usage:       "task-cli doc open <task_id> [--doc <doc_id>]",
-			Run:         DocOpen,
-		},
-		&Command{
-			Name:        "prune",
-			Description: "Audit and clean orphaned attachment files",
-			Usage:       "task-cli doc prune [--dry-run]",
-			Run:         DocPrune,
-		},
-	)
-
-	root.AddCommand(
-		projectCmd,
-		taskCmd,
-		rootDocCmd,
-		&Command{
-			Name:        "doc-add",
-			Aliases:     []string{"attach"},
-			Description: "Link a document to a task",
-			Run:         DocAdd,
-		},
-		&Command{
-			Name:        "doc-list",
-			Aliases:     []string{"docs"},
-			Description: "List documents linked to a task",
-			Run:         DocList,
-		},
-		&Command{
-			Name:        "doc-del",
-			Aliases:     []string{"doc-rm", "doc-remove"},
-			Description: "Remove a linked document by ID",
-			Run:         DocDelete,
-		},
-		&Command{
-			Name:        "doc-open",
-			Description: "Open task attachment directory or reveal document",
-			Run:         DocOpen,
-		},
-		&Command{
-			Name:        "doc-prune",
-			Description: "Audit and clean orphaned attachment files",
-			Run:         DocPrune,
-		},
-		&Command{
-			Name:        "export",
-			Aliases:     []string{"exp"},
-			Description: "Export projects, tasks, and documents to JSON",
-			Run:         Export,
-		},
-		&Command{
-			Name:        "import",
-			Aliases:     []string{"imp"},
-			Description: "Import projects, tasks, and documents from JSON",
-			Run:         Import,
-		},
-	)
-
+	root.AddCommand(projectCmd, taskCmd, &Command{
+		Name:        "config",
+		Aliases:     []string{"cfg"},
+		Description: "Open the config file in $EDITOR (created from a template if missing)",
+		Usage:       "task-cli config",
+		Run:         ConfigEdit,
+	})
 	return root
 }

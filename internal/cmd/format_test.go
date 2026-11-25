@@ -35,12 +35,11 @@ func TestFormatValidation(t *testing.T) {
 }
 
 func TestTaskListTableFormat(t *testing.T) {
-	ctx, cleanup := setupTestContext(t)
-	defer cleanup()
+	ctx := setupTestContext(t)
 
 	_ = ProjectAdd(ctx, []string{"PROJ", "My Project", "Project description"})
-	_ = TaskAdd(ctx, []string{"-p", "1", "First Task", "Description 1"})
-	_ = TaskAdd(ctx, []string{"-p", "1", "Second Task", "Description 2"})
+	_ = TaskAdd(ctx, []string{"-p", "PROJ", "First Task", "Description 1"})
+	_ = TaskAdd(ctx, []string{"-p", "PROJ", "Second Task", "Description 2"})
 
 	// 1. Test table format output
 	out, err := captureStdout(func() error {
@@ -93,8 +92,7 @@ func TestTaskListTableFormat(t *testing.T) {
 }
 
 func TestProjectListTableFormat(t *testing.T) {
-	ctx, cleanup := setupTestContext(t)
-	defer cleanup()
+	ctx := setupTestContext(t)
 
 	_ = ProjectAdd(ctx, []string{"P1", "Project One", "Description 1"})
 	_ = ProjectAdd(ctx, []string{"P2", "Project Two", "Description 2"})
@@ -107,7 +105,7 @@ func TestProjectListTableFormat(t *testing.T) {
 		t.Fatalf("unexpected error with -F table: %v", err)
 	}
 
-	if !strings.Contains(out, "ID") || !strings.Contains(out, "CODE") || !strings.Contains(out, "NAME") || !strings.Contains(out, "DESCRIPTION") {
+	if !strings.Contains(out, "NAME") || !strings.Contains(out, "DESCRIPTION") {
 		t.Errorf("expected uppercase headers in table output, got:\n%s", out)
 	}
 	if !strings.Contains(out, "P1") || !strings.Contains(out, "Project Two") {
@@ -121,7 +119,7 @@ func TestProjectListTableFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error with --format table -n: %v", err)
 	}
-	if strings.Contains(outNoHeader, "CODE") {
+	if strings.Contains(outNoHeader, "NAME") {
 		t.Errorf("expected no header in output, got:\n%s", outNoHeader)
 	}
 

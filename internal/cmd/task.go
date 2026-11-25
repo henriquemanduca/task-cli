@@ -6,13 +6,35 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
-	"task-cli/internal/config"
-	"task-cli/internal/db"
+	"task-cli/internal/vault"
 )
+
+// parseTaskID parses a numeric task ID argument.
+func parseTaskID(raw string) (int64, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("invalid task ID: %s", raw)
+	}
+	return id, nil
+}
+
+// taskError turns vault sentinel errors into user-facing messages.
+// action describes the attempted change (e.g. "update"), used for immutable tasks.
+func taskError(id int64, action string, err error) error {
+	switch {
+	case errors.Is(err, vault.ErrTaskNotFound):
+		return fmt.Errorf("task with ID %d not found", id)
+	case errors.Is(err, vault.ErrTaskImmutable):
+		return fmt.Errorf("cannot %s task with ID %d: task is deleted or aborted", action, id)
+	case errors.Is(err, vault.ErrProjectNotFound):
+		return fmt.Errorf("project not found: %w", err)
+	default:
+		return err
+	}
+}
 
 func cleanOneLine(text string) string {
 	clean := strings.ReplaceAll(text, "\r\n", " ")
@@ -61,20 +83,6 @@ func splitFlagsAndPosArgs(args []string, valueFlags map[string]bool) ([]string, 
 	return flagArgs, posArgs
 }
 
-// flagWasSet reports whether any of the named flags was explicitly provided.
-func flagWasSet(fs *flag.FlagSet, names ...string) bool {
-	found := false
-	fs.Visit(func(f *flag.Flag) {
-		for _, name := range names {
-			if f.Name == name {
-				found = true
-				return
-			}
-		}
-	})
-	return found
-}
-
 // -----------------------------------------------------------------------------
 // TaskAdd
 // -----------------------------------------------------------------------------
@@ -83,15 +91,13 @@ func flagWasSet(fs *flag.FlagSet, names ...string) bool {
 type TaskAddArgs struct {
 	Title       string
 	Description string
-	ProjectID   *int64
-	ProjectCode string
-	Priority    db.Priority
+	ProjectName string
+	Priority    vault.Priority
 }
 
 // TaskAddResult holds the created task and associated project reference.
 type TaskAddResult struct {
-	Task       *db.Task
-	ProjectRef string
+	Task *vault.Task
 }
 
 // TaskAddAction encapsulates schema parsing, execution, and output formatting for task creation.
@@ -100,12 +106,12 @@ type TaskAddAction struct{}
 // Parse parses flags and positional arguments for creating a task.
 func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) {
 	addCmd := flag.NewFlagSet("add", flag.ContinueOnError)
-	var projectStr string
+	var projectName string
 	var priority string
 
-	addCmd.StringVar(&projectStr, "p", "", "Project ID to link task to (shorthand)")
-	addCmd.StringVar(&projectStr, "proj", "", "Project ID to link task to")
-	addCmd.StringVar(&projectStr, "project", "", "Project ID to link task to")
+	addCmd.StringVar(&projectName, "p", "", "Project name to create the task in (shorthand)")
+	addCmd.StringVar(&projectName, "proj", "", "Project name to create the task in")
+	addCmd.StringVar(&projectName, "project", "", "Project name to create the task in")
 	addCmd.StringVar(&priority, "priority", "medium", "Task priority (e.g. low, medium, high)")
 
 	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
@@ -120,23 +126,7 @@ func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) 
 	}
 
 	if len(posArgs) < 1 {
-		return TaskAddArgs{}, fmt.Errorf("'title' is required.\nUsage: task-cli add [-p <id>] [--priority <prio>] <title> [description]")
-	}
-
-	var projectID *int64
-	if projectStr != "" {
-		id, err := strconv.ParseInt(projectStr, 10, 64)
-		if err != nil {
-			return TaskAddArgs{}, fmt.Errorf("invalid project ID: %s", projectStr)
-		}
-		projectID = &id
-	}
-
-	// Use the workspace default only when the user did not pass any project
-	// flag; an explicit -p "" disables the default for this invocation.
-	var projectCode string
-	if !flagWasSet(addCmd, "p", "proj", "project") {
-		projectCode = ctx.DefaultProject()
+		return TaskAddArgs{}, fmt.Errorf("'title' is required.\nUsage: task-cli task add [-p <project>] [--priority <prio>] <title> [description]")
 	}
 
 	title := strings.TrimSpace(posArgs[0])
@@ -145,7 +135,7 @@ func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) 
 		description = strings.Join(posArgs[1:], " ")
 	}
 
-	parsedPriority, ok := db.ParsePriority(priority)
+	parsedPriority, ok := vault.ParsePriority(priority)
 	if !ok {
 		return TaskAddArgs{}, fmt.Errorf("invalid priority '%s'. Valid options: low, medium, high, urgent", priority)
 	}
@@ -153,54 +143,27 @@ func (a *TaskAddAction) Parse(ctx *Context, args []string) (TaskAddArgs, error) 
 	return TaskAddArgs{
 		Title:       title,
 		Description: description,
-		ProjectID:   projectID,
-		ProjectCode: projectCode,
+		ProjectName: strings.TrimSpace(projectName),
 		Priority:    parsedPriority,
 	}, nil
 }
 
-// Execute persists the new task into the database.
+// Execute writes the new task file into the vault.
 func (a *TaskAddAction) Execute(ctx *Context, args TaskAddArgs) (*TaskAddResult, error) {
-	projectID := args.ProjectID
-	var projectRef string
-
-	switch {
-	case projectID != nil:
-		proj, err := ctx.Store.GetProjectByID(ctx.Context(), *projectID)
-		if err != nil {
-			if errors.Is(err, db.ErrProjectNotFound) {
-				return nil, fmt.Errorf("project with ID %d not found", *projectID)
-			}
-			return nil, err
-		}
-		projectRef = proj.Code
-	case args.ProjectCode != "":
-		proj, err := ctx.Store.GetProjectByCode(ctx.Context(), args.ProjectCode)
-		if err != nil {
-			if errors.Is(err, db.ErrProjectNotFound) {
-				return nil, fmt.Errorf("project '%s' configured in %s not found", args.ProjectCode, config.FileName)
-			}
-			return nil, err
-		}
-		projectID = &proj.ID
-		projectRef = proj.Code
-	}
-
-	task, err := ctx.Store.Add(ctx.Context(), args.Title, args.Description, projectID, args.Priority)
+	task, err := ctx.Store.Add(args.Title, args.Description, args.ProjectName, args.Priority)
 	if err != nil {
+		if errors.Is(err, vault.ErrProjectNotFound) {
+			return nil, fmt.Errorf("project '%s' not found", args.ProjectName)
+		}
 		return nil, fmt.Errorf("creating task: %w", err)
 	}
-
-	return &TaskAddResult{
-		Task:       task,
-		ProjectRef: projectRef,
-	}, nil
+	return &TaskAddResult{Task: task}, nil
 }
 
 // Format renders task creation confirmation.
 func (a *TaskAddAction) Format(ctx *Context, w io.Writer, res *TaskAddResult) error {
-	if res.ProjectRef != "" {
-		_, err := fmt.Fprintf(w, "Task created successfully (ID: %d) in project '%s'\n", res.Task.ID, res.ProjectRef)
+	if res.Task.ProjectName != "" {
+		_, err := fmt.Fprintf(w, "Task created successfully (ID: %d) in project '%s'\n", res.Task.ID, res.Task.ProjectName)
 		return err
 	}
 	_, err := fmt.Fprintf(w, "Task created successfully (ID: %d)\n", res.Task.ID)
@@ -210,7 +173,7 @@ func (a *TaskAddAction) Format(ctx *Context, w io.Writer, res *TaskAddResult) er
 // TaskAddHandler is the standardized handler instance for TaskAddAction.
 var TaskAddHandler = NewActionHandler(&TaskAddAction{})
 
-// TaskAdd adiciona uma nova tarefa ao banco de dados.
+// TaskAdd adiciona uma nova tarefa ao vault.
 func TaskAdd(ctx *Context, args []string) error {
 	return TaskAddHandler.Run(ctx, args)
 }
@@ -222,7 +185,7 @@ func TaskAdd(ctx *Context, args []string) error {
 // TaskListArgs represents the argument schema for listing tasks.
 type TaskListArgs struct {
 	StatusFilter string
-	ProjectCode  string
+	ProjectName  string
 	ShowTime     bool
 	NoHeader     bool
 	Format       string
@@ -230,7 +193,7 @@ type TaskListArgs struct {
 
 // TaskListResult holds query results and formatting options for task listing.
 type TaskListResult struct {
-	Tasks    []db.Task
+	Tasks    []vault.Task
 	ShowTime bool
 	NoHeader bool
 	Format   string
@@ -246,7 +209,7 @@ func (a *TaskListAction) Parse(ctx *Context, args []string) (TaskListArgs, error
 	var showAll bool
 	var showDone bool
 	var noHeader bool
-	var projectCode string
+	var projectName string
 	var statusFlag string
 	var format string
 
@@ -265,8 +228,8 @@ func (a *TaskListAction) Parse(ctx *Context, args []string) (TaskListArgs, error
 	listCmd.BoolVar(&noHeader, "no-header", false, "Suppress header row")
 	listCmd.StringVar(&format, "format", defaultFormat, "Output format (tsv, table)")
 	listCmd.StringVar(&format, "F", defaultFormat, "Output format (shorthand)")
-	listCmd.StringVar(&projectCode, "p", "", "Filter tasks by project code (shorthand)")
-	listCmd.StringVar(&projectCode, "project", "", "Filter tasks by project code")
+	listCmd.StringVar(&projectName, "p", "", "Filter tasks by project name (shorthand)")
+	listCmd.StringVar(&projectName, "project", "", "Filter tasks by project name")
 	listCmd.StringVar(&statusFlag, "s", "", "Filter tasks by status (shorthand)")
 	listCmd.StringVar(&statusFlag, "status", "", "Filter tasks by status")
 
@@ -283,12 +246,6 @@ func (a *TaskListAction) Parse(ctx *Context, args []string) (TaskListArgs, error
 		return TaskListArgs{}, err
 	}
 
-	// Use the workspace default only when the user did not pass any project
-	// flag; an explicit -p "" disables the default for this invocation.
-	if !flagWasSet(listCmd, "p", "project") {
-		projectCode = ctx.DefaultProject()
-	}
-
 	resolvedFmt, err := validateFormat(format)
 	if err != nil {
 		return TaskListArgs{}, err
@@ -303,29 +260,29 @@ func (a *TaskListAction) Parse(ctx *Context, args []string) (TaskListArgs, error
 	if showAll || posStatus == "all" {
 		statusFilter = ""
 	} else if showDone || posStatus == "done" {
-		statusFilter = string(db.StatusDone)
+		statusFilter = string(vault.StatusDone)
 	} else if posStatus != "" {
-		status, ok := db.ParseStatus(posStatus)
-		if !ok || status == db.StatusDeleted {
+		status, ok := vault.ParseStatus(posStatus)
+		if !ok || status == vault.StatusDeleted {
 			return TaskListArgs{}, fmt.Errorf("invalid status '%s'. Valid options: all, pending, in-progress, done, aborted", posStatus)
 		}
 		statusFilter = string(status)
 	} else {
-		statusFilter = string(db.StatusPending)
+		statusFilter = string(vault.StatusPending)
 	}
 
 	return TaskListArgs{
 		StatusFilter: statusFilter,
-		ProjectCode:  projectCode,
+		ProjectName:  projectName,
 		ShowTime:     showTime,
 		NoHeader:     noHeader,
 		Format:       resolvedFmt,
 	}, nil
 }
 
-// Execute queries tasks from the database according to filters.
+// Execute reads tasks from the vault according to filters.
 func (a *TaskListAction) Execute(ctx *Context, args TaskListArgs) (*TaskListResult, error) {
-	tasks, err := ctx.Store.List(ctx.Context(), args.StatusFilter, args.ProjectCode)
+	tasks, err := ctx.Store.List(args.StatusFilter, args.ProjectName)
 	if err != nil {
 		return nil, fmt.Errorf("querying tasks: %w", err)
 	}
@@ -351,7 +308,7 @@ func (a *TaskListAction) Format(ctx *Context, w io.Writer, res *TaskListResult) 
 
 	var rows [][]string
 	for _, t := range res.Tasks {
-		proj := t.ProjectCode
+		proj := t.ProjectName
 		if proj == "" {
 			proj = "-"
 		}
@@ -394,9 +351,8 @@ type TaskViewArgs struct {
 
 // TaskViewResult holds task details, documents, and display settings.
 type TaskViewResult struct {
-	Task      *db.Task
-	Documents []db.Document
-	ShowTime  bool
+	Task     *vault.Task
+	ShowTime bool
 }
 
 // TaskViewAction encapsulates schema parsing, execution, and output formatting for task details.
@@ -415,11 +371,11 @@ func (a *TaskViewAction) Parse(ctx *Context, args []string) (TaskViewArgs, error
 	}
 
 	if len(posArgs) < 1 {
-		return TaskViewArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli view <id> [-t]")
+		return TaskViewArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task view <id> [-t]")
 	}
-	id, err := strconv.ParseInt(posArgs[0], 10, 64)
+	id, err := parseTaskID(posArgs[0])
 	if err != nil {
-		return TaskViewArgs{}, fmt.Errorf("invalid task ID: %s", posArgs[0])
+		return TaskViewArgs{}, err
 	}
 
 	return TaskViewArgs{
@@ -428,32 +384,19 @@ func (a *TaskViewAction) Parse(ctx *Context, args []string) (TaskViewArgs, error
 	}, nil
 }
 
-// Execute retrieves task information and attached documents from the database.
+// Execute reads the task file from the vault.
 func (a *TaskViewAction) Execute(ctx *Context, args TaskViewArgs) (*TaskViewResult, error) {
-	t, err := ctx.Store.GetTaskByID(ctx.Context(), args.ID)
+	t, err := ctx.Store.GetTask(args.ID)
 	if err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, taskError(args.ID, "view", err)
 	}
-
-	docs, err := ctx.Store.ListDocuments(ctx.Context(), t.ID)
-	if err != nil {
-		return nil, fmt.Errorf("listing task documents: %w", err)
-	}
-
-	return &TaskViewResult{
-		Task:      t,
-		Documents: docs,
-		ShowTime:  args.ShowTime,
-	}, nil
+	return &TaskViewResult{Task: t, ShowTime: args.ShowTime}, nil
 }
 
 // Format renders the full task details view.
 func (a *TaskViewAction) Format(ctx *Context, w io.Writer, res *TaskViewResult) error {
 	t := res.Task
-	proj := t.ProjectCode
+	proj := t.ProjectName
 	if proj == "" {
 		proj = "-"
 	}
@@ -467,21 +410,15 @@ func (a *TaskViewAction) Format(ctx *Context, w io.Writer, res *TaskViewResult) 
 		fmt.Fprintf(w, "Created At: %s\n", t.CreatedAt.Local().Format("2006-01-02 15:04:05"))
 		fmt.Fprintf(w, "Updated At: %s\n", t.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
 	}
-	if t.AbortReason != nil && *t.AbortReason != "" {
-		fmt.Fprintf(w, "Abort Note: %s\n", *t.AbortReason)
+	if t.AbortReason != "" {
+		fmt.Fprintf(w, "Abort Note: %s\n", t.AbortReason)
 	}
+	fmt.Fprintf(w, "File: %s\n", t.Path)
 	fmt.Fprintf(w, "Description:\n")
 	if strings.TrimSpace(t.Description) == "" {
 		fmt.Fprintln(w, "(No description provided)")
 	} else {
 		fmt.Fprintln(w, t.Description)
-	}
-
-	if len(res.Documents) > 0 {
-		fmt.Fprintf(w, "\nAttached Documents (%d):\n", len(res.Documents))
-		for _, d := range res.Documents {
-			fmt.Fprintf(w, "  [%d] %s (%s): %s\n", d.ID, d.Name, d.Type, d.FilePath)
-		}
 	}
 
 	return nil
@@ -504,9 +441,9 @@ type TaskUpdateArgs struct {
 	ID          int64
 	Title       string
 	Description string
-	ProjectID   *int64
+	ProjectName string
 	ClearProj   bool
-	Priority    db.Priority
+	Priority    vault.Priority
 	HasTitle    bool
 	HasDesc     bool
 }
@@ -522,18 +459,20 @@ type TaskUpdateAction struct{}
 // Parse parses arguments and flags for updating a task.
 func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, error) {
 	if len(args) < 1 {
-		return TaskUpdateArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-p <id>] [--priority <prio>] [title] [description]")
+		return TaskUpdateArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task update <id> [-p <project|none>] [--priority <prio>] [title] [description]")
 	}
 
 	updateCmd := flag.NewFlagSet("update", flag.ContinueOnError)
 	var projectStr string
 	var priority string
-	updateCmd.StringVar(&projectStr, "p", "", "Move task to project ID (or 'none' to detach)")
-	updateCmd.StringVar(&projectStr, "project", "", "Move task to project ID (or 'none' to detach)")
+	updateCmd.StringVar(&projectStr, "p", "", "Move task to project name (or 'none' to detach)")
+	updateCmd.StringVar(&projectStr, "proj", "", "Move task to project name (or 'none' to detach)")
+	updateCmd.StringVar(&projectStr, "project", "", "Move task to project name (or 'none' to detach)")
 	updateCmd.StringVar(&priority, "priority", "", "Update task priority (e.g. low, medium, high)")
 
 	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
 		"-p":         true,
+		"--proj":     true,
 		"--project":  true,
 		"--priority": true,
 	})
@@ -543,16 +482,14 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 	}
 
 	if len(posArgs) < 1 {
-		return TaskUpdateArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli update <id> [-p <id>] [--priority <prio>] [title] [description]")
+		return TaskUpdateArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task update <id> [-p <project|none>] [--priority <prio>] [title] [description]")
 	}
 
-	idStr := posArgs[0]
-	posArgs = posArgs[1:]
-
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	id, err := parseTaskID(posArgs[0])
 	if err != nil {
-		return TaskUpdateArgs{}, fmt.Errorf("invalid task ID: %s", idStr)
+		return TaskUpdateArgs{}, err
 	}
+	posArgs = posArgs[1:]
 
 	var title string
 	var hasTitle bool
@@ -568,25 +505,20 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 		hasDesc = true
 	}
 
-	var parsedProjectID *int64
+	var projectName string
 	var clearProj bool
-	if projectStr != "" {
-		cleanProj := strings.Trim(projectStr, ", ")
+	if cleanProj := strings.TrimSpace(projectStr); cleanProj != "" {
 		if strings.EqualFold(cleanProj, "none") || cleanProj == "-" {
 			clearProj = true
 		} else {
-			pID, err := strconv.ParseInt(cleanProj, 10, 64)
-			if err != nil {
-				return TaskUpdateArgs{}, fmt.Errorf("invalid project ID: %s", projectStr)
-			}
-			parsedProjectID = &pID
+			projectName = cleanProj
 		}
 	}
 
-	var parsedPriority db.Priority
+	var parsedPriority vault.Priority
 	if priority != "" {
 		var ok bool
-		parsedPriority, ok = db.ParsePriority(priority)
+		parsedPriority, ok = vault.ParsePriority(priority)
 		if !ok {
 			return TaskUpdateArgs{}, fmt.Errorf("invalid priority '%s'. Valid options: low, medium, high, urgent", priority)
 		}
@@ -596,7 +528,7 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 		ID:          id,
 		Title:       title,
 		Description: desc,
-		ProjectID:   parsedProjectID,
+		ProjectName: projectName,
 		ClearProj:   clearProj,
 		Priority:    parsedPriority,
 		HasTitle:    hasTitle,
@@ -604,65 +536,31 @@ func (a *TaskUpdateAction) Parse(ctx *Context, args []string) (TaskUpdateArgs, e
 	}, nil
 }
 
-// Execute updates task details in the database.
+// Execute updates the task file (renaming/moving it when title or project change).
 func (a *TaskUpdateAction) Execute(ctx *Context, args TaskUpdateArgs) (*TaskUpdateResult, error) {
-	if err := ctx.Store.CheckTaskMutable(ctx.Context(), args.ID); err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
+	_, err := ctx.Store.UpdateTask(args.ID, func(t *vault.Task) error {
+		if args.HasTitle {
+			t.Title = args.Title
 		}
-		if errors.Is(err, db.ErrTaskImmutable) {
-			return nil, fmt.Errorf("cannot update task with ID %d: task is deleted or aborted", args.ID)
+		if args.HasDesc {
+			t.Description = args.Description
 		}
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-
-	existing, err := ctx.Store.GetTaskByID(ctx.Context(), args.ID)
+		if args.ClearProj {
+			t.ProjectName = ""
+		} else if args.ProjectName != "" {
+			t.ProjectName = args.ProjectName
+		}
+		if args.Priority != "" {
+			t.Priority = args.Priority
+		}
+		return nil
+	})
 	if err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
+		if errors.Is(err, vault.ErrProjectNotFound) {
+			return nil, fmt.Errorf("project '%s' not found", args.ProjectName)
 		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, taskError(args.ID, "update", err)
 	}
-
-	newTitle := existing.Title
-	newDesc := existing.Description
-	newProjectID := existing.ProjectID
-	newPriority := existing.Priority
-
-	if args.HasTitle {
-		newTitle = args.Title
-	}
-	if args.HasDesc {
-		newDesc = args.Description
-	}
-
-	if args.ClearProj {
-		newProjectID = nil
-	} else if args.ProjectID != nil {
-		proj, err := ctx.Store.GetProjectByID(ctx.Context(), *args.ProjectID)
-		if err != nil {
-			if errors.Is(err, db.ErrProjectNotFound) {
-				return nil, fmt.Errorf("project with ID %d not found", *args.ProjectID)
-			}
-			return nil, fmt.Errorf("database error: %w", err)
-		}
-		newProjectID = &proj.ID
-	}
-
-	if args.Priority != "" {
-		newPriority = args.Priority
-	}
-
-	if err := ctx.Store.UpdateTaskDetails(ctx.Context(), args.ID, newTitle, newDesc, newProjectID, newPriority); err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
-		}
-		if errors.Is(err, db.ErrTaskImmutable) {
-			return nil, fmt.Errorf("cannot update task with ID %d: task is deleted or aborted", args.ID)
-		}
-		return nil, fmt.Errorf("updating task: %w", err)
-	}
-
 	return &TaskUpdateResult{ID: args.ID}, nil
 }
 
@@ -701,94 +599,46 @@ type TaskEditAction struct{}
 // Parse validates the task ID argument for editing.
 func (a *TaskEditAction) Parse(ctx *Context, args []string) (TaskEditArgs, error) {
 	if len(args) < 1 {
-		return TaskEditArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli edit <id>")
+		return TaskEditArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task edit <id>")
 	}
 
-	id, err := strconv.ParseInt(args[0], 10, 64)
+	id, err := parseTaskID(args[0])
 	if err != nil {
-		return TaskEditArgs{}, fmt.Errorf("invalid task ID: %s", args[0])
+		return TaskEditArgs{}, err
 	}
 
 	return TaskEditArgs{ID: id}, nil
 }
 
-// Execute opens an external text editor and saves modified task descriptions.
+// Execute opens the task's Markdown file directly in the user's editor.
 func (a *TaskEditAction) Execute(ctx *Context, args TaskEditArgs) (*TaskEditResult, error) {
-	if err := ctx.Store.CheckTaskMutable(ctx.Context(), args.ID); err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
-		}
-		if errors.Is(err, db.ErrTaskImmutable) {
-			return nil, fmt.Errorf("cannot edit task with ID %d: task is deleted or aborted", args.ID)
-		}
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-
-	t, err := ctx.Store.GetTaskByID(ctx.Context(), args.ID)
+	t, err := ctx.Store.GetMutableTask(args.ID)
 	if err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, taskError(args.ID, "edit", err)
 	}
 
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = os.Getenv("VISUAL")
-	}
-	if editor == "" {
-		editor = "nano"
-	}
-
-	tmpFile, err := os.CreateTemp("", fmt.Sprintf("task-cli-%d-*.md", t.ID))
+	before, err := os.ReadFile(t.Path)
 	if err != nil {
-		return nil, fmt.Errorf("creating temporary file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmpFile.WriteString(t.Description); err != nil {
-		tmpFile.Close()
-		return nil, fmt.Errorf("writing to temporary file: %w", err)
-	}
-	tmpFile.Close()
-
-	editorParts := strings.Fields(editor)
-	var cmd *exec.Cmd
-	if len(editorParts) > 1 {
-		cmdArgsList := append(editorParts[1:], tmpPath)
-		cmd = exec.Command(editorParts[0], cmdArgsList...)
-	} else {
-		cmd = exec.Command(editor, tmpPath)
-	}
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("editor '%s' exited with error: %w", editor, err)
+		return nil, fmt.Errorf("reading task file: %w", err)
 	}
 
-	updatedBytes, err := os.ReadFile(tmpPath)
+	if err := openInEditor(t.Path); err != nil {
+		return nil, err
+	}
+
+	after, err := os.ReadFile(t.Path)
 	if err != nil {
-		return nil, fmt.Errorf("reading updated file: %w", err)
+		return nil, fmt.Errorf("reading task file: %w", err)
 	}
-
-	newDesc := strings.TrimRight(string(updatedBytes), "\r\n ")
-	if newDesc == strings.TrimRight(t.Description, "\r\n ") {
+	if string(before) == string(after) {
 		return &TaskEditResult{ID: args.ID, Changed: false}, nil
 	}
 
-	if err := ctx.Store.UpdateDescription(ctx.Context(), args.ID, newDesc); err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
-		}
-		if errors.Is(err, db.ErrTaskImmutable) {
-			return nil, fmt.Errorf("cannot edit task with ID %d: task is deleted or aborted", args.ID)
-		}
-		return nil, fmt.Errorf("updating task description: %w", err)
+	// Re-save through the vault to validate the file, bump "updated" and
+	// rename it if the title heading changed.
+	if _, err := ctx.Store.UpdateTask(args.ID, func(*vault.Task) error { return nil }); err != nil {
+		return nil, fmt.Errorf("task file saved but could not be re-read (%s): %w", t.Path, err)
 	}
-
 	return &TaskEditResult{ID: args.ID, Changed: true}, nil
 }
 
@@ -798,14 +648,14 @@ func (a *TaskEditAction) Format(ctx *Context, w io.Writer, res *TaskEditResult) 
 		fmt.Fprintln(w, "No changes made.")
 		return nil
 	}
-	_, err := fmt.Fprintf(w, "Task %d description updated successfully\n", res.ID)
+	_, err := fmt.Fprintf(w, "Task %d updated successfully\n", res.ID)
 	return err
 }
 
 // TaskEditHandler is the standardized handler instance for TaskEditAction.
 var TaskEditHandler = NewActionHandler(&TaskEditAction{})
 
-// TaskEdit abre o editor externo para editar a descrição de uma tarefa.
+// TaskEdit abre o arquivo .md da tarefa no editor externo.
 func TaskEdit(ctx *Context, args []string) error {
 	return TaskEditHandler.Run(ctx, args)
 }
@@ -830,24 +680,24 @@ type TaskDeleteAction struct{}
 // Parse parses and validates the task ID argument for deletion.
 func (a *TaskDeleteAction) Parse(ctx *Context, args []string) (TaskDeleteArgs, error) {
 	if len(args) < 1 {
-		return TaskDeleteArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli delete <id>")
+		return TaskDeleteArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task delete <id>")
 	}
 
-	id, err := strconv.ParseInt(args[0], 10, 64)
+	id, err := parseTaskID(args[0])
 	if err != nil {
-		return TaskDeleteArgs{}, fmt.Errorf("invalid task ID: %s", args[0])
+		return TaskDeleteArgs{}, err
 	}
 
 	return TaskDeleteArgs{ID: id}, nil
 }
 
-// Execute soft-deletes the task in the database.
+// Execute marks the task as deleted and moves it to <vault>/.trash.
 func (a *TaskDeleteAction) Execute(ctx *Context, args TaskDeleteArgs) (*TaskDeleteResult, error) {
-	if err := ctx.Store.Delete(ctx.Context(), args.ID); err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
+	if err := ctx.Store.Delete(args.ID); err != nil {
+		if errors.Is(err, vault.ErrTaskNotFound) {
 			return nil, fmt.Errorf("task with ID %d not found or already deleted", args.ID)
 		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, err
 	}
 
 	return &TaskDeleteResult{ID: args.ID}, nil
@@ -855,14 +705,14 @@ func (a *TaskDeleteAction) Execute(ctx *Context, args TaskDeleteArgs) (*TaskDele
 
 // Format renders the deletion confirmation message.
 func (a *TaskDeleteAction) Format(ctx *Context, w io.Writer, res *TaskDeleteResult) error {
-	_, err := fmt.Fprintf(w, "Task %d soft deleted successfully\n", res.ID)
+	_, err := fmt.Fprintf(w, "Task %d moved to trash\n", res.ID)
 	return err
 }
 
 // TaskDeleteHandler is the standardized handler instance for TaskDeleteAction.
 var TaskDeleteHandler = NewActionHandler(&TaskDeleteAction{})
 
-// TaskDelete remove logicamente (soft delete) uma tarefa pelo ID.
+// TaskDelete move a tarefa para a lixeira do vault (.trash).
 func TaskDelete(ctx *Context, args []string) error {
 	return TaskDeleteHandler.Run(ctx, args)
 }
@@ -875,15 +725,15 @@ func TaskDelete(ctx *Context, args []string) error {
 type TaskStatusArgs struct {
 	ID      int64
 	IsQuery bool
-	Status  db.Status
-	Reason  *string
+	Status  vault.Status
+	Reason  string
 }
 
 // TaskStatusResult holds the outcome of a task status query or update.
 type TaskStatusResult struct {
 	ID      int64
-	Status  db.Status
-	Reason  *string
+	Status  vault.Status
+	Reason  string
 	IsQuery bool
 }
 
@@ -898,9 +748,9 @@ func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, e
 
 	// 1 argument: query current status
 	if len(args) == 1 {
-		id, err := strconv.ParseInt(args[0], 10, 64)
+		id, err := parseTaskID(args[0])
 		if err != nil {
-			return TaskStatusArgs{}, fmt.Errorf("invalid task ID: %s", args[0])
+			return TaskStatusArgs{}, err
 		}
 		return TaskStatusArgs{ID: id, IsQuery: true}, nil
 	}
@@ -910,13 +760,13 @@ func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, e
 	var rawStatus string
 	var remaining []string
 
-	id1, err1 := strconv.ParseInt(args[0], 10, 64)
+	id1, err1 := parseTaskID(args[0])
 	if err1 == nil {
 		id = id1
 		rawStatus = args[1]
 		remaining = args[2:]
 	} else {
-		id2, err2 := strconv.ParseInt(args[1], 10, 64)
+		id2, err2 := parseTaskID(args[1])
 		if err2 == nil {
 			id = id2
 			rawStatus = args[0]
@@ -929,25 +779,22 @@ func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, e
 	statusLower := strings.ToLower(strings.TrimSpace(rawStatus))
 	switch statusLower {
 	case "todo", "reopen":
-		statusLower = string(db.StatusPending)
+		statusLower = string(vault.StatusPending)
 	case "start", "started", "progress", "doing":
-		statusLower = string(db.StatusInProgress)
+		statusLower = string(vault.StatusInProgress)
 	case "complete", "completed", "finish", "finished":
-		statusLower = string(db.StatusDone)
+		statusLower = string(vault.StatusDone)
 	case "cancel", "cancelled":
-		statusLower = string(db.StatusAborted)
+		statusLower = string(vault.StatusAborted)
 	}
-	targetStatus, ok := db.ParseStatus(statusLower)
-	if !ok || targetStatus == db.StatusDeleted {
+	targetStatus, ok := vault.ParseStatus(statusLower)
+	if !ok || targetStatus == vault.StatusDeleted {
 		return TaskStatusArgs{}, fmt.Errorf("invalid status '%s'. Valid options: pending, in-progress, done, aborted", rawStatus)
 	}
 
-	var abortReason *string
-	if targetStatus == db.StatusAborted && len(remaining) > 0 {
-		reason := strings.TrimSpace(strings.Join(remaining, " "))
-		if reason != "" {
-			abortReason = &reason
-		}
+	var abortReason string
+	if targetStatus == vault.StatusAborted {
+		abortReason = strings.TrimSpace(strings.Join(remaining, " "))
 	}
 
 	return TaskStatusArgs{
@@ -958,55 +805,35 @@ func (a *TaskStatusAction) Parse(ctx *Context, args []string) (TaskStatusArgs, e
 	}, nil
 }
 
-// Execute queries or updates the task status in the database.
+// Execute queries or updates the task status.
 func (a *TaskStatusAction) Execute(ctx *Context, args TaskStatusArgs) (*TaskStatusResult, error) {
 	if args.IsQuery {
-		t, err := ctx.Store.GetTaskByID(ctx.Context(), args.ID)
+		t, err := ctx.Store.GetTask(args.ID)
 		if err != nil {
-			if errors.Is(err, db.ErrTaskNotFound) {
-				return nil, fmt.Errorf("task with ID %d not found", args.ID)
-			}
-			return nil, fmt.Errorf("database error: %w", err)
+			return nil, taskError(args.ID, "view", err)
 		}
-		return &TaskStatusResult{
-			ID:      t.ID,
-			Status:  t.Status,
-			Reason:  t.AbortReason,
-			IsQuery: true,
-		}, nil
+		return &TaskStatusResult{ID: t.ID, Status: t.Status, Reason: t.AbortReason, IsQuery: true}, nil
 	}
 
-	if err := ctx.Store.UpdateStatus(ctx.Context(), args.ID, args.Status, args.Reason); err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
-		}
-		if errors.Is(err, db.ErrTaskImmutable) {
-			return nil, fmt.Errorf("cannot change status of task with ID %d: task is deleted or aborted", args.ID)
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+	if _, err := ctx.Store.SetStatus(args.ID, args.Status, args.Reason); err != nil {
+		return nil, taskError(args.ID, "change status of", err)
 	}
-
-	return &TaskStatusResult{
-		ID:      args.ID,
-		Status:  args.Status,
-		Reason:  args.Reason,
-		IsQuery: false,
-	}, nil
+	return &TaskStatusResult{ID: args.ID, Status: args.Status, Reason: args.Reason}, nil
 }
 
 // Format renders the status query or update message.
 func (a *TaskStatusAction) Format(ctx *Context, w io.Writer, res *TaskStatusResult) error {
 	if res.IsQuery {
-		if res.Status == db.StatusAborted && res.Reason != nil && *res.Reason != "" {
-			fmt.Fprintf(w, "Task %04d status: %s (reason: %s)\n", res.ID, res.Status, *res.Reason)
+		if res.Status == vault.StatusAborted && res.Reason != "" {
+			fmt.Fprintf(w, "Task %04d status: %s (reason: %s)\n", res.ID, res.Status, res.Reason)
 		} else {
 			fmt.Fprintf(w, "Task %04d status: %s\n", res.ID, res.Status)
 		}
 		return nil
 	}
 
-	if res.Status == db.StatusAborted && res.Reason != nil {
-		fmt.Fprintf(w, "Task %04d status set to 'aborted' (reason: %s)\n", res.ID, *res.Reason)
+	if res.Status == vault.StatusAborted && res.Reason != "" {
+		fmt.Fprintf(w, "Task %04d status set to 'aborted' (reason: %s)\n", res.ID, res.Reason)
 	} else {
 		fmt.Fprintf(w, "Task %04d status set to '%s'\n", res.ID, res.Status)
 	}
@@ -1028,13 +855,13 @@ func TaskStatus(ctx *Context, args []string) error {
 // TaskSetPriorityArgs represents the argument schema for setting task priority.
 type TaskSetPriorityArgs struct {
 	ID       int64
-	Priority db.Priority
+	Priority vault.Priority
 }
 
 // TaskSetPriorityResult holds the task ID and new priority.
 type TaskSetPriorityResult struct {
 	ID       int64
-	Priority db.Priority
+	Priority vault.Priority
 }
 
 // TaskSetPriorityAction encapsulates schema parsing, execution, and output formatting for priority updates.
@@ -1043,15 +870,15 @@ type TaskSetPriorityAction struct{}
 // Parse parses arguments for setting priority.
 func (a *TaskSetPriorityAction) Parse(ctx *Context, args []string) (TaskSetPriorityArgs, error) {
 	if len(args) < 2 {
-		return TaskSetPriorityArgs{}, fmt.Errorf("task ID and priority are required.\nUsage: task-cli set-prio <id> <priority>")
+		return TaskSetPriorityArgs{}, fmt.Errorf("task ID and priority are required.\nUsage: task-cli task prio <id> <priority>")
 	}
 
-	id, err := strconv.ParseInt(args[0], 10, 64)
+	id, err := parseTaskID(args[0])
 	if err != nil {
-		return TaskSetPriorityArgs{}, fmt.Errorf("invalid task ID: %s", args[0])
+		return TaskSetPriorityArgs{}, err
 	}
 
-	prio, ok := db.ParsePriority(args[1])
+	prio, ok := vault.ParsePriority(args[1])
 	if !ok {
 		return TaskSetPriorityArgs{}, fmt.Errorf("invalid priority '%s'. Valid options: low, medium, high, urgent", args[1])
 	}
@@ -1062,16 +889,14 @@ func (a *TaskSetPriorityAction) Parse(ctx *Context, args []string) (TaskSetPrior
 	}, nil
 }
 
-// Execute updates task priority in the database.
+// Execute updates the task priority.
 func (a *TaskSetPriorityAction) Execute(ctx *Context, args TaskSetPriorityArgs) (*TaskSetPriorityResult, error) {
-	if err := ctx.Store.UpdatePriority(ctx.Context(), args.ID, args.Priority); err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
-		}
-		if errors.Is(err, db.ErrTaskImmutable) {
-			return nil, fmt.Errorf("cannot update priority of task with ID %d: task is deleted or aborted", args.ID)
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+	_, err := ctx.Store.UpdateTask(args.ID, func(t *vault.Task) error {
+		t.Priority = args.Priority
+		return nil
+	})
+	if err != nil {
+		return nil, taskError(args.ID, "update priority of", err)
 	}
 
 	return &TaskSetPriorityResult{
@@ -1101,56 +926,49 @@ func TaskSetPriority(ctx *Context, args []string) error {
 // TaskSetStatusArgs represents the argument schema for dedicated status transition commands.
 type TaskSetStatusArgs struct {
 	ID          int64
-	Status      db.Status
-	Reason      *string
+	Status      vault.Status
+	Reason      string
 	CommandName string
 }
 
 // TaskSetStatusResult holds status transition details.
 type TaskSetStatusResult struct {
 	ID     int64
-	Status db.Status
-	Reason *string
+	Status vault.Status
+	Reason string
 }
 
 // TaskSetStatusAction encapsulates schema parsing, execution, and output formatting for dedicated status transitions.
 type TaskSetStatusAction struct {
-	Status      db.Status
+	Status      vault.Status
 	CommandName string
 }
 
 // Parse parses arguments for status transitions.
 func (a *TaskSetStatusAction) Parse(ctx *Context, args []string) (TaskSetStatusArgs, error) {
-	if a.Status == db.StatusAborted {
+	if a.Status == vault.StatusAborted {
 		if len(args) < 1 {
-			return TaskSetStatusArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli set-abort <id> [reason]")
+			return TaskSetStatusArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task set-abort <id> [reason]")
 		}
-		id, err := strconv.ParseInt(args[0], 10, 64)
+		id, err := parseTaskID(args[0])
 		if err != nil {
-			return TaskSetStatusArgs{}, fmt.Errorf("invalid task ID: %s", args[0])
-		}
-		var abortReason *string
-		if len(args) > 1 {
-			reason := strings.TrimSpace(strings.Join(args[1:], " "))
-			if reason != "" {
-				abortReason = &reason
-			}
+			return TaskSetStatusArgs{}, err
 		}
 		return TaskSetStatusArgs{
 			ID:          id,
-			Status:      db.StatusAborted,
-			Reason:      abortReason,
+			Status:      vault.StatusAborted,
+			Reason:      strings.TrimSpace(strings.Join(args[1:], " ")),
 			CommandName: a.CommandName,
 		}, nil
 	}
 
 	if len(args) < 1 {
-		return TaskSetStatusArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli %s <id>", a.CommandName)
+		return TaskSetStatusArgs{}, fmt.Errorf("task ID is required.\nUsage: task-cli task %s <id>", a.CommandName)
 	}
 
-	id, err := strconv.ParseInt(args[0], 10, 64)
+	id, err := parseTaskID(args[0])
 	if err != nil {
-		return TaskSetStatusArgs{}, fmt.Errorf("invalid task ID: %s", args[0])
+		return TaskSetStatusArgs{}, err
 	}
 
 	return TaskSetStatusArgs{
@@ -1160,16 +978,10 @@ func (a *TaskSetStatusAction) Parse(ctx *Context, args []string) (TaskSetStatusA
 	}, nil
 }
 
-// Execute applies the status update in the database.
+// Execute applies the status update.
 func (a *TaskSetStatusAction) Execute(ctx *Context, args TaskSetStatusArgs) (*TaskSetStatusResult, error) {
-	if err := ctx.Store.UpdateStatus(ctx.Context(), args.ID, args.Status, args.Reason); err != nil {
-		if errors.Is(err, db.ErrTaskNotFound) {
-			return nil, fmt.Errorf("task with ID %d not found", args.ID)
-		}
-		if errors.Is(err, db.ErrTaskImmutable) {
-			return nil, fmt.Errorf("cannot change status of task with ID %d: task is deleted or aborted", args.ID)
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+	if _, err := ctx.Store.SetStatus(args.ID, args.Status, args.Reason); err != nil {
+		return nil, taskError(args.ID, "change status of", err)
 	}
 
 	return &TaskSetStatusResult{
@@ -1181,8 +993,8 @@ func (a *TaskSetStatusAction) Execute(ctx *Context, args TaskSetStatusArgs) (*Ta
 
 // Format renders the status transition confirmation.
 func (a *TaskSetStatusAction) Format(ctx *Context, w io.Writer, res *TaskSetStatusResult) error {
-	if res.Status == db.StatusAborted && res.Reason != nil {
-		_, err := fmt.Fprintf(w, "Task %04d status set to 'aborted' (reason: %s)\n", res.ID, *res.Reason)
+	if res.Status == vault.StatusAborted && res.Reason != "" {
+		_, err := fmt.Fprintf(w, "Task %04d status set to 'aborted' (reason: %s)\n", res.ID, res.Reason)
 		return err
 	}
 	_, err := fmt.Fprintf(w, "Task %04d status set to '%s'\n", res.ID, res.Status)
@@ -1190,10 +1002,10 @@ func (a *TaskSetStatusAction) Format(ctx *Context, w io.Writer, res *TaskSetStat
 }
 
 var (
-	TaskSetPendingHandler    = NewActionHandler(&TaskSetStatusAction{Status: db.StatusPending, CommandName: "set-pending"})
-	TaskSetInProgressHandler = NewActionHandler(&TaskSetStatusAction{Status: db.StatusInProgress, CommandName: "set-in-progress"})
-	TaskSetDoneHandler       = NewActionHandler(&TaskSetStatusAction{Status: db.StatusDone, CommandName: "set-done"})
-	TaskSetAbortHandler      = NewActionHandler(&TaskSetStatusAction{Status: db.StatusAborted, CommandName: "set-abort"})
+	TaskSetPendingHandler    = NewActionHandler(&TaskSetStatusAction{Status: vault.StatusPending, CommandName: "set-pending"})
+	TaskSetInProgressHandler = NewActionHandler(&TaskSetStatusAction{Status: vault.StatusInProgress, CommandName: "set-in-progress"})
+	TaskSetDoneHandler       = NewActionHandler(&TaskSetStatusAction{Status: vault.StatusDone, CommandName: "set-done"})
+	TaskSetAbortHandler      = NewActionHandler(&TaskSetStatusAction{Status: vault.StatusAborted, CommandName: "set-abort"})
 )
 
 // TaskSetPending define o status da tarefa como 'pending'.

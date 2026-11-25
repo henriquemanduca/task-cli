@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -8,75 +9,75 @@ import (
 
 func TestParseGlobalFlags(t *testing.T) {
 	tests := []struct {
-		name        string
-		args        []string
-		expectedDB  string
-		expectedFmt string
-		expectedRem []string
-		expectErr   bool
-		errContains string
+		name          string
+		args          []string
+		expectedVault string
+		expectedFmt   string
+		expectedRem   []string
+		expectErr     bool
+		errContains   string
 	}{
 		{
-			name:        "no global flags",
-			args:        []string{"task", "list", "-a"},
-			expectedDB:  "",
-			expectedFmt: "",
-			expectedRem: []string{"task", "list", "-a"},
-			expectErr:   false,
+			name:          "no global flags",
+			args:          []string{"task", "list", "-a"},
+			expectedVault: "",
+			expectedFmt:   "",
+			expectedRem:   []string{"task", "list", "-a"},
+			expectErr:     false,
 		},
 		{
-			name:        "--db before command",
-			args:        []string{"--db", "/tmp/test.db", "task", "list"},
-			expectedDB:  "/tmp/test.db",
-			expectedFmt: "",
-			expectedRem: []string{"task", "list"},
-			expectErr:   false,
+			name:          "--vault before command",
+			args:          []string{"--vault", "/tmp/test-vault", "task", "list"},
+			expectedVault: "/tmp/test-vault",
+			expectedFmt:   "",
+			expectedRem:   []string{"task", "list"},
+			expectErr:     false,
 		},
 		{
-			name:        "--db=value syntax",
-			args:        []string{"--db=/tmp/eq.db", "project", "list"},
-			expectedDB:  "/tmp/eq.db",
-			expectedFmt: "",
-			expectedRem: []string{"project", "list"},
-			expectErr:   false,
+			name:          "--vault=value syntax",
+			args:          []string{"--vault=/tmp/eq-vault", "project", "list"},
+			expectedVault: "/tmp/eq-vault",
+			expectedFmt:   "",
+			expectedRem:   []string{"project", "list"},
+			expectErr:     false,
 		},
 		{
-			name:        "--db after command and positionals",
-			args:        []string{"task", "add", "My Task", "--db", "/tmp/after.db"},
-			expectedDB:  "/tmp/after.db",
-			expectedFmt: "",
-			expectedRem: []string{"task", "add", "My Task"},
-			expectErr:   false,
+			name:          "--vault after command and positionals",
+			args:          []string{"task", "add", "My Task", "--vault", "/tmp/after-vault"},
+			expectedVault: "/tmp/after-vault",
+			expectedFmt:   "",
+			expectedRem:   []string{"task", "add", "My Task"},
+			expectErr:     false,
 		},
 		{
-			name:        "-F table before and after",
-			args:        []string{"-F", "table", "task", "list"},
-			expectedDB:  "",
-			expectedFmt: "table",
-			expectedRem: []string{"task", "list"},
-			expectErr:   false,
+			name:          "-F table before and after",
+			args:          []string{"-F", "table", "task", "list"},
+			expectedVault: "",
+			expectedFmt:   "table",
+			expectedRem:   []string{"task", "list"},
+			expectErr:     false,
 		},
 		{
-			name:        "--format=table syntax",
-			args:        []string{"task", "list", "--format=table"},
-			expectedDB:  "",
-			expectedFmt: "table",
-			expectedRem: []string{"task", "list"},
-			expectErr:   false,
+			name:          "--format=table syntax",
+			args:          []string{"task", "list", "--format=table"},
+			expectedVault: "",
+			expectedFmt:   "table",
+			expectedRem:   []string{"task", "list"},
+			expectErr:     false,
 		},
 		{
-			name:        "combined --db and -F flags interspersed",
-			args:        []string{"task", "-F", "table", "list", "--db=/tmp/all.db", "-a"},
-			expectedDB:  "/tmp/all.db",
-			expectedFmt: "table",
-			expectedRem: []string{"task", "list", "-a"},
-			expectErr:   false,
+			name:          "combined --vault and -F flags interspersed",
+			args:          []string{"task", "-F", "table", "list", "--vault=/tmp/all-vault", "-a"},
+			expectedVault: "/tmp/all-vault",
+			expectedFmt:   "table",
+			expectedRem:   []string{"task", "list", "-a"},
+			expectErr:     false,
 		},
 		{
-			name:        "missing --db argument",
-			args:        []string{"task", "list", "--db"},
+			name:        "missing --vault argument",
+			args:        []string{"task", "list", "--vault"},
 			expectErr:   true,
-			errContains: "flag --db requires an argument",
+			errContains: "flag --vault requires an argument",
 		},
 		{
 			name:        "missing -F argument",
@@ -91,12 +92,12 @@ func TestParseGlobalFlags(t *testing.T) {
 			errContains: "invalid format",
 		},
 		{
-			name:        "stop parsing flags after --",
-			args:        []string{"task", "add", "--", "-F", "table"},
-			expectedDB:  "",
-			expectedFmt: "",
-			expectedRem: []string{"task", "add", "--", "-F", "table"},
-			expectErr:   false,
+			name:          "stop parsing flags after --",
+			args:          []string{"task", "add", "--", "-F", "table"},
+			expectedVault: "",
+			expectedFmt:   "",
+			expectedRem:   []string{"task", "add", "--", "-F", "table"},
+			expectErr:     false,
 		},
 	}
 
@@ -116,8 +117,8 @@ func TestParseGlobalFlags(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if gf.DBPath != tt.expectedDB {
-				t.Errorf("DBPath: expected %q, got %q", tt.expectedDB, gf.DBPath)
+			if gf.VaultPath != tt.expectedVault {
+				t.Errorf("VaultPath: expected %q, got %q", tt.expectedVault, gf.VaultPath)
 			}
 			if gf.Format != tt.expectedFmt {
 				t.Errorf("Format: expected %q, got %q", tt.expectedFmt, gf.Format)
@@ -135,21 +136,15 @@ func TestParseGlobalFlags(t *testing.T) {
 }
 
 func TestResolveContext(t *testing.T) {
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "context_test.db")
+	vaultPath := filepath.Join(t.TempDir(), "vault")
 
-	// 1. ResolveContext with custom DB and format
-	ctx, remaining, cleanup, err := ResolveContext([]string{"--db", dbPath, "-F", "table", "task", "list"})
+	// 1. ResolveContext with custom vault and format
+	ctx, remaining, err := ResolveContext([]string{"--vault", vaultPath, "-F", "table", "task", "list"})
 	if err != nil {
 		t.Fatalf("unexpected error in ResolveContext: %v", err)
 	}
-	if cleanup == nil {
-		t.Fatal("expected non-nil cleanup function")
-	}
-	defer cleanup()
-
-	if ctx.DBPath != dbPath {
-		t.Errorf("expected DBPath %q, got %q", dbPath, ctx.DBPath)
+	if ctx.VaultPath != vaultPath {
+		t.Errorf("expected VaultPath %q, got %q", vaultPath, ctx.VaultPath)
 	}
 	if ctx.Format != "table" {
 		t.Errorf("expected Format 'table', got %q", ctx.Format)
@@ -157,17 +152,17 @@ func TestResolveContext(t *testing.T) {
 	if ctx.Store == nil {
 		t.Fatal("expected Store to be initialized in Context")
 	}
+	if info, err := os.Stat(vaultPath); err != nil || !info.IsDir() {
+		t.Fatalf("expected vault folder to be created: %v", err)
+	}
 	if len(remaining) != 2 || remaining[0] != "task" || remaining[1] != "list" {
 		t.Fatalf("unexpected remaining arguments: %v", remaining)
 	}
 
-	// 2. ResolveContext for non-database commands like version
-	ctxVer, remVer, cleanupVer, err := ResolveContext([]string{"version"})
+	// 2. version does not open the vault
+	ctxVer, remVer, err := ResolveContext([]string{"version"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if cleanupVer != nil {
-		t.Error("expected nil cleanup for non-db command")
 	}
 	if ctxVer.Store != nil {
 		t.Error("expected nil Store for 'version' command")
@@ -176,20 +171,52 @@ func TestResolveContext(t *testing.T) {
 		t.Errorf("unexpected remaining args: %v", remVer)
 	}
 
-	// 3. ResolveContext for empty arguments
-	ctxEmpty, remEmpty, cleanupEmpty, err := ResolveContext([]string{})
+	// 3. empty arguments
+	ctxEmpty, remEmpty, err := ResolveContext([]string{})
 	if err != nil {
 		t.Fatalf("unexpected error on empty args: %v", err)
 	}
-	if cleanupEmpty != nil || ctxEmpty.Store != nil || len(remEmpty) != 0 {
+	if ctxEmpty.Store != nil || len(remEmpty) != 0 {
 		t.Errorf("expected empty context and no store on empty args")
 	}
 }
 
+func TestResolveVaultPathPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("vault: from-config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TASK_CLI_CONFIG", cfgPath)
+	t.Setenv("TASK_CLI_VAULT", "")
+
+	got, err := ResolveVaultPath("")
+	if err != nil || got != filepath.Join(dir, "from-config") {
+		t.Fatalf("config: got %q, %v", got, err)
+	}
+
+	t.Setenv("TASK_CLI_VAULT", filepath.Join(dir, "from-env"))
+	got, err = ResolveVaultPath("")
+	if err != nil || got != filepath.Join(dir, "from-env") {
+		t.Fatalf("env: got %q, %v", got, err)
+	}
+
+	got, err = ResolveVaultPath(filepath.Join(dir, "from-flag"))
+	if err != nil || got != filepath.Join(dir, "from-flag") {
+		t.Fatalf("flag: got %q, %v", got, err)
+	}
+
+	if err := os.WriteFile(cfgPath, []byte("vault: [broken\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TASK_CLI_VAULT", "")
+	if _, err := ResolveVaultPath(""); err == nil || !strings.Contains(err.Error(), "config error") {
+		t.Fatalf("expected config error, got %v", err)
+	}
+}
+
 func TestRootExecute_TransversalFlagsInjection(t *testing.T) {
-	ctx, cleanup := setupTestContext(t)
-	defer cleanup()
-	t.Chdir(t.TempDir())
+	ctx := setupTestContext(t)
 
 	// 1. Add a task to check table output
 	err := Root.Execute(ctx, []string{"task", "add", "Transversal Task", "Testing global flags"})
@@ -198,12 +225,10 @@ func TestRootExecute_TransversalFlagsInjection(t *testing.T) {
 	}
 
 	// 2. Resolve transversal flags anywhere, then dispatch like main does.
-	resolvedCtx, remaining, resolveCleanup, err := ResolveContext([]string{"--db", ctx.DBPath, "task", "-F", "table", "list"})
+	resolvedCtx, remaining, err := ResolveContext([]string{"--vault", ctx.VaultPath, "task", "-F", "table", "list"})
 	if err != nil {
 		t.Fatalf("failed to resolve context: %v", err)
 	}
-	defer resolveCleanup()
-
 	var handled bool
 	out, err := captureStdout(func() error {
 		var execErr error

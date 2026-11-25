@@ -5,15 +5,25 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
-	"task-cli/internal/db"
+	"task-cli/internal/vault"
 )
+
+// projectError turns vault sentinel errors into user-facing messages.
+func projectError(name string, err error) error {
+	if errors.Is(err, vault.ErrProjectNotFound) {
+		return fmt.Errorf("project '%s' not found", name)
+	}
+	return err
+}
+
+// -----------------------------------------------------------------------------
+// ProjectAdd
+// -----------------------------------------------------------------------------
 
 // ProjectAddArgs represents the argument schema for adding a project.
 type ProjectAddArgs struct {
-	Code        string
 	Name        string
 	Description string
 }
@@ -21,32 +31,23 @@ type ProjectAddArgs struct {
 // ProjectAddAction encapsulates schema parsing, execution, and output formatting for project creation.
 type ProjectAddAction struct{}
 
-// Parse validates and extracts code, name, and optional description from arguments.
+// Parse extracts the project name and optional description.
 func (a *ProjectAddAction) Parse(ctx *Context, args []string) (ProjectAddArgs, error) {
-	if len(args) < 2 {
-		return ProjectAddArgs{}, fmt.Errorf("'code' and 'name' are required.\nUsage: task-cli project add <code> <name> [description]")
+	if len(args) < 1 || strings.TrimSpace(args[0]) == "" {
+		return ProjectAddArgs{}, fmt.Errorf("'name' is required.\nUsage: task-cli project add <name> [description]")
 	}
-
-	code := strings.TrimSpace(args[0])
-	name := strings.TrimSpace(args[1])
-	var description string
-	if len(args) > 2 {
-		description = strings.TrimSpace(strings.Join(args[2:], " "))
-	}
-
 	return ProjectAddArgs{
-		Code:        code,
-		Name:        name,
-		Description: description,
+		Name:        strings.TrimSpace(args[0]),
+		Description: strings.TrimSpace(strings.Join(args[1:], " ")),
 	}, nil
 }
 
-// Execute persists the project into the database.
-func (a *ProjectAddAction) Execute(ctx *Context, args ProjectAddArgs) (*db.Project, error) {
-	project, err := ctx.Store.AddProject(ctx.Context(), args.Code, args.Name, args.Description)
+// Execute creates the project folder in the vault.
+func (a *ProjectAddAction) Execute(ctx *Context, args ProjectAddArgs) (*vault.Project, error) {
+	project, err := ctx.Store.AddProject(args.Name, args.Description)
 	if err != nil {
-		if errors.Is(err, db.ErrProjectCodeExists) {
-			return nil, fmt.Errorf("project with code '%s' already exists", args.Code)
+		if errors.Is(err, vault.ErrProjectExists) {
+			return nil, fmt.Errorf("project '%s' already exists", args.Name)
 		}
 		return nil, err
 	}
@@ -54,8 +55,8 @@ func (a *ProjectAddAction) Execute(ctx *Context, args ProjectAddArgs) (*db.Proje
 }
 
 // Format renders the project creation confirmation message.
-func (a *ProjectAddAction) Format(ctx *Context, w io.Writer, project *db.Project) error {
-	_, err := fmt.Fprintf(w, "Project '%s' created successfully (ID: %d)\n", project.Code, project.ID)
+func (a *ProjectAddAction) Format(ctx *Context, w io.Writer, project *vault.Project) error {
+	_, err := fmt.Fprintf(w, "Project '%s' created successfully\n", project.Name)
 	return err
 }
 
@@ -67,9 +68,12 @@ func ProjectAdd(ctx *Context, args []string) error {
 	return ProjectAddHandler.Run(ctx, args)
 }
 
+// -----------------------------------------------------------------------------
+// ProjectList
+// -----------------------------------------------------------------------------
+
 // ProjectListArgs represents the argument schema for listing projects.
 type ProjectListArgs struct {
-	ShowTime bool
 	ShowDesc bool
 	NoHeader bool
 	Format   string
@@ -77,11 +81,8 @@ type ProjectListArgs struct {
 
 // ProjectListResult holds the query results and display options for project listing.
 type ProjectListResult struct {
-	Projects []db.Project
-	ShowTime bool
-	ShowDesc bool
-	NoHeader bool
-	Format   string
+	Projects []vault.Project
+	ProjectListArgs
 }
 
 // ProjectListAction encapsulates schema parsing, execution, and output formatting for listing projects.
@@ -90,17 +91,13 @@ type ProjectListAction struct{}
 // Parse parses flags for listing projects.
 func (a *ProjectListAction) Parse(ctx *Context, args []string) (ProjectListArgs, error) {
 	pCmd := flag.NewFlagSet("project-list", flag.ContinueOnError)
-	var showTime bool
-	var showDesc bool
-	var noHeader bool
+	var showDesc, noHeader bool
 	var format string
 	defaultFormat := FormatTSV
 	if ctx != nil && ctx.Format != "" {
 		defaultFormat = ctx.Format
 	}
 
-	pCmd.BoolVar(&showTime, "t", false, "Include creation date column")
-	pCmd.BoolVar(&showTime, "time", false, "Include creation date column")
 	pCmd.BoolVar(&showDesc, "d", false, "Include description column")
 	pCmd.BoolVar(&showDesc, "desc", false, "Include description column")
 	pCmd.BoolVar(&showDesc, "description", false, "Include description column")
@@ -108,8 +105,6 @@ func (a *ProjectListAction) Parse(ctx *Context, args []string) (ProjectListArgs,
 	pCmd.BoolVar(&noHeader, "no-header", false, "Suppress header row")
 	pCmd.StringVar(&format, "format", defaultFormat, "Output format (tsv, table)")
 	pCmd.StringVar(&format, "F", defaultFormat, "Output format (shorthand)")
-	pCmd.Bool("p", false, "List projects (shorthand)")
-	pCmd.Bool("projects", false, "List projects")
 
 	flagArgs, _ := splitFlagsAndPosArgs(args, map[string]bool{
 		"-F":       true,
@@ -123,144 +118,77 @@ func (a *ProjectListAction) Parse(ctx *Context, args []string) (ProjectListArgs,
 	if err != nil {
 		return ProjectListArgs{}, err
 	}
-
-	return ProjectListArgs{
-		ShowTime: showTime,
-		ShowDesc: showDesc,
-		NoHeader: noHeader,
-		Format:   resolvedFmt,
-	}, nil
+	return ProjectListArgs{ShowDesc: showDesc, NoHeader: noHeader, Format: resolvedFmt}, nil
 }
 
-// Execute queries the database for all projects.
+// Execute lists all project folders in the vault.
 func (a *ProjectListAction) Execute(ctx *Context, args ProjectListArgs) (*ProjectListResult, error) {
-	projects, err := ctx.Store.ListProjects(ctx.Context())
+	projects, err := ctx.Store.ListProjects()
 	if err != nil {
 		return nil, fmt.Errorf("listing projects: %w", err)
 	}
-
-	return &ProjectListResult{
-		Projects: projects,
-		ShowTime: args.ShowTime,
-		ShowDesc: args.ShowDesc,
-		NoHeader: args.NoHeader,
-		Format:   args.Format,
-	}, nil
+	return &ProjectListResult{Projects: projects, ProjectListArgs: args}, nil
 }
 
 // Format delegates project output rendering to the tabular output formatter.
 func (a *ProjectListAction) Format(ctx *Context, w io.Writer, res *ProjectListResult) error {
-	if len(res.Projects) == 0 {
-		return nil
-	}
-
-	cols := []string{"id", "code", "name"}
+	cols := []string{"name"}
 	if res.ShowDesc {
 		cols = append(cols, "description")
-	}
-	if res.ShowTime {
-		cols = append(cols, "created_at")
 	}
 
 	var rows [][]string
 	for _, p := range res.Projects {
-		desc := p.Description
-		if desc == "" {
-			desc = "-"
-		}
-		row := []string{
-			fmt.Sprintf("%d", p.ID),
-			p.Code,
-			p.Name,
-		}
+		row := []string{cleanOneLine(p.Name)}
 		if res.ShowDesc {
-			row = append(row, cleanOneLine(desc))
-		}
-		if res.ShowTime {
-			row = append(row, p.CreatedAt.Local().Format("2006-01-02T15:04:05"))
+			row = append(row, cleanOneLine(p.Description))
 		}
 		rows = append(rows, row)
 	}
-
 	return printOutput(w, res.Format, res.NoHeader, cols, rows)
 }
 
 // ProjectListHandler is the standardized handler instance for ProjectListAction.
 var ProjectListHandler = NewActionHandler(&ProjectListAction{})
 
-// ProjectList lists all registered projects in TSV or table format.
+// ProjectList lists all projects in TSV or table format.
 func ProjectList(ctx *Context, args []string) error {
 	return ProjectListHandler.Run(ctx, args)
 }
 
+// -----------------------------------------------------------------------------
+// ProjectView
+// -----------------------------------------------------------------------------
+
 // ProjectViewArgs represents the argument schema for viewing a project.
 type ProjectViewArgs struct {
-	Target   string
-	ShowTime bool
-}
-
-// ProjectViewResult holds the retrieved project and display options.
-type ProjectViewResult struct {
-	Project  *db.Project
-	ShowTime bool
+	Name string
 }
 
 // ProjectViewAction encapsulates schema parsing, execution, and output formatting for project details.
 type ProjectViewAction struct{}
 
-// Parse validates arguments and parses flags for project viewing.
+// Parse validates the project name argument.
 func (a *ProjectViewAction) Parse(ctx *Context, args []string) (ProjectViewArgs, error) {
-	viewCmd := flag.NewFlagSet("project view", flag.ContinueOnError)
-	var showTime bool
-	viewCmd.BoolVar(&showTime, "t", false, "Show timestamps (created_at, updated_at)")
-	viewCmd.BoolVar(&showTime, "time", false, "Show timestamps (created_at, updated_at)")
-
-	flagArgs, posArgs := splitFlagsAndPosArgs(args, nil)
-	if err := viewCmd.Parse(flagArgs); err != nil {
-		return ProjectViewArgs{}, err
+	if len(args) < 1 || strings.TrimSpace(args[0]) == "" {
+		return ProjectViewArgs{}, fmt.Errorf("project name is required.\nUsage: task-cli project view <name>")
 	}
-
-	if len(posArgs) < 1 {
-		return ProjectViewArgs{}, fmt.Errorf("project code or ID is required.\nUsage: task-cli project view <code|id> [-t]")
-	}
-
-	return ProjectViewArgs{
-		Target:   strings.TrimSpace(posArgs[0]),
-		ShowTime: showTime,
-	}, nil
+	return ProjectViewArgs{Name: strings.TrimSpace(args[0])}, nil
 }
 
-// Execute resolves the project by code or ID from the database.
-func (a *ProjectViewAction) Execute(ctx *Context, args ProjectViewArgs) (*ProjectViewResult, error) {
-	project, err := ctx.Store.GetProjectByCode(ctx.Context(), args.Target)
-	if err != nil && errors.Is(err, db.ErrProjectNotFound) {
-		if id, parseErr := strconv.ParseInt(args.Target, 10, 64); parseErr == nil {
-			project, err = ctx.Store.GetProjectByID(ctx.Context(), id)
-		}
-	}
-
+// Execute resolves the project by name.
+func (a *ProjectViewAction) Execute(ctx *Context, args ProjectViewArgs) (*vault.Project, error) {
+	project, err := ctx.Store.GetProject(args.Name)
 	if err != nil {
-		if errors.Is(err, db.ErrProjectNotFound) {
-			return nil, fmt.Errorf("project '%s' not found", args.Target)
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, projectError(args.Name, err)
 	}
-
-	return &ProjectViewResult{
-		Project:  project,
-		ShowTime: args.ShowTime,
-	}, nil
+	return project, nil
 }
 
 // Format renders the full project details.
-func (a *ProjectViewAction) Format(ctx *Context, w io.Writer, res *ProjectViewResult) error {
-	project := res.Project
-	fmt.Fprintf(w, "Project: %s (ID: %d)\n", project.Code, project.ID)
-	fmt.Fprintf(w, "Name: %s\n", project.Name)
-	if res.ShowTime {
-		fmt.Fprintf(w, "Created: %s\n", project.CreatedAt.Local().Format("2006-01-02 15:04:05"))
-		fmt.Fprintf(w, "Updated: %s\n", project.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
-	}
+func (a *ProjectViewAction) Format(ctx *Context, w io.Writer, project *vault.Project) error {
+	fmt.Fprintf(w, "Project: %s\n", project.Name)
+	fmt.Fprintf(w, "Folder: %s\n", project.Path)
 	if project.Description != "" {
 		fmt.Fprintf(w, "Description:\n%s\n", project.Description)
 	}
@@ -270,40 +198,36 @@ func (a *ProjectViewAction) Format(ctx *Context, w io.Writer, res *ProjectViewRe
 // ProjectViewHandler is the standardized handler instance for ProjectViewAction.
 var ProjectViewHandler = NewActionHandler(&ProjectViewAction{})
 
-// ProjectView displays project details by code or ID.
+// ProjectView displays project details by name.
 func ProjectView(ctx *Context, args []string) error {
 	return ProjectViewHandler.Run(ctx, args)
 }
 
+// -----------------------------------------------------------------------------
+// ProjectUpdate
+// -----------------------------------------------------------------------------
+
 // ProjectUpdateArgs represents the argument schema for updating a project.
 type ProjectUpdateArgs struct {
-	Target         string
 	Name           string
-	HasName        bool
+	NewName        string
+	HasNewName     bool
 	Description    string
 	HasDescription bool
-}
-
-// ProjectUpdateResult holds the updated project.
-type ProjectUpdateResult struct {
-	Project *db.Project
 }
 
 // ProjectUpdateAction encapsulates schema parsing, execution, and output formatting for project updates.
 type ProjectUpdateAction struct{}
 
-// Parse parses flags and positional arguments for updating a project.
-func (a *ProjectUpdateAction) Parse(ctx *Context, args []string) (ProjectUpdateArgs, error) {
-	if len(args) < 1 {
-		return ProjectUpdateArgs{}, fmt.Errorf("project code or ID is required.\nUsage: task-cli project update <code|id> [--name <name>] [--desc <desc>]")
-	}
+const projectUpdateUsage = "Usage: task-cli project update <name> [--name <new name>] [--desc <description>]"
 
+// Parse parses flags and the project name for updating a project.
+func (a *ProjectUpdateAction) Parse(ctx *Context, args []string) (ProjectUpdateArgs, error) {
 	updateCmd := flag.NewFlagSet("project update", flag.ContinueOnError)
-	var name string
-	var desc string
-	updateCmd.StringVar(&name, "name", "", "New project name")
-	updateCmd.StringVar(&desc, "desc", "", "New project description")
-	updateCmd.StringVar(&desc, "description", "", "New project description")
+	var newName, desc string
+	updateCmd.StringVar(&newName, "name", "", "Rename the project (renames its folder)")
+	updateCmd.StringVar(&desc, "desc", "", "New project description (empty clears it)")
+	updateCmd.StringVar(&desc, "description", "", "New project description (empty clears it)")
 
 	flagArgs, posArgs := splitFlagsAndPosArgs(args, map[string]bool{
 		"--name":        true,
@@ -313,83 +237,73 @@ func (a *ProjectUpdateAction) Parse(ctx *Context, args []string) (ProjectUpdateA
 		"--description": true,
 		"-description":  true,
 	})
-
 	if err := updateCmd.Parse(flagArgs); err != nil {
 		return ProjectUpdateArgs{}, err
 	}
-
-	if len(posArgs) < 1 {
-		return ProjectUpdateArgs{}, fmt.Errorf("project code or ID is required.\nUsage: task-cli project update <code|id> [--name <name>] [--desc <desc>]")
+	if len(posArgs) < 1 || strings.TrimSpace(posArgs[0]) == "" {
+		return ProjectUpdateArgs{}, fmt.Errorf("project name is required.\n%s", projectUpdateUsage)
 	}
 
-	var hasName, hasDesc bool
-	for _, arg := range flagArgs {
-		if arg == "--name" || arg == "-name" || strings.HasPrefix(arg, "--name=") || strings.HasPrefix(arg, "-name=") {
-			hasName = true
-		}
-		if arg == "--desc" || arg == "-desc" || strings.HasPrefix(arg, "--desc=") || strings.HasPrefix(arg, "-desc=") ||
-			arg == "--description" || arg == "-description" || strings.HasPrefix(arg, "--description=") || strings.HasPrefix(arg, "-description=") {
-			hasDesc = true
-		}
-	}
-
-	return ProjectUpdateArgs{
-		Target:         strings.TrimSpace(posArgs[0]),
-		Name:           name,
-		HasName:        hasName,
+	parsed := ProjectUpdateArgs{
+		Name:           strings.TrimSpace(posArgs[0]),
+		NewName:        strings.TrimSpace(newName),
+		HasNewName:     flagWasSet(updateCmd, "name"),
 		Description:    desc,
-		HasDescription: hasDesc,
-	}, nil
+		HasDescription: flagWasSet(updateCmd, "desc", "description"),
+	}
+	if !parsed.HasNewName && !parsed.HasDescription {
+		return ProjectUpdateArgs{}, fmt.Errorf("nothing to update.\n%s", projectUpdateUsage)
+	}
+	return parsed, nil
 }
 
-// Execute resolves and updates the project in the database.
-func (a *ProjectUpdateAction) Execute(ctx *Context, args ProjectUpdateArgs) (*ProjectUpdateResult, error) {
-	project, err := ctx.Store.GetProjectByCode(ctx.Context(), args.Target)
-	if err != nil && errors.Is(err, db.ErrProjectNotFound) {
-		if id, parseErr := strconv.ParseInt(args.Target, 10, 64); parseErr == nil {
-			project, err = ctx.Store.GetProjectByID(ctx.Context(), id)
-		}
-	}
-
+// Execute renames the project folder and/or updates its description.
+func (a *ProjectUpdateAction) Execute(ctx *Context, args ProjectUpdateArgs) (*vault.Project, error) {
+	project, err := ctx.Store.GetProject(args.Name)
 	if err != nil {
-		if errors.Is(err, db.ErrProjectNotFound) {
-			return nil, fmt.Errorf("project '%s' not found", args.Target)
+		return nil, projectError(args.Name, err)
+	}
+	if args.HasNewName {
+		project, err = ctx.Store.RenameProject(project.Name, args.NewName)
+		if err != nil {
+			if errors.Is(err, vault.ErrProjectExists) {
+				return nil, fmt.Errorf("project '%s' already exists", args.NewName)
+			}
+			return nil, err
 		}
-		return nil, fmt.Errorf("database error: %w", err)
 	}
-
-	newName := project.Name
-	if args.HasName {
-		newName = args.Name
-	}
-
-	newDesc := project.Description
 	if args.HasDescription {
-		newDesc = args.Description
+		project, err = ctx.Store.SetProjectDescription(project.Name, args.Description)
+		if err != nil {
+			return nil, err
+		}
 	}
-
-	if err := ctx.Store.UpdateProject(ctx.Context(), project.ID, newName, newDesc); err != nil {
-		return nil, fmt.Errorf("updating project: %w", err)
-	}
-
-	updatedProject, err := ctx.Store.GetProjectByID(ctx.Context(), project.ID)
-	if err != nil {
-		return nil, fmt.Errorf("reloading project: %w", err)
-	}
-
-	return &ProjectUpdateResult{Project: updatedProject}, nil
+	return project, nil
 }
 
 // Format renders the update confirmation message.
-func (a *ProjectUpdateAction) Format(ctx *Context, w io.Writer, res *ProjectUpdateResult) error {
-	_, err := fmt.Fprintf(w, "Project '%s' updated successfully (ID: %d)\n", res.Project.Code, res.Project.ID)
+func (a *ProjectUpdateAction) Format(ctx *Context, w io.Writer, project *vault.Project) error {
+	_, err := fmt.Fprintf(w, "Project '%s' updated successfully\n", project.Name)
 	return err
 }
 
 // ProjectUpdateHandler is the standardized handler instance for ProjectUpdateAction.
 var ProjectUpdateHandler = NewActionHandler(&ProjectUpdateAction{})
 
-// ProjectUpdate updates the name and description of an existing project.
+// ProjectUpdate renames a project and/or updates its description.
 func ProjectUpdate(ctx *Context, args []string) error {
 	return ProjectUpdateHandler.Run(ctx, args)
+}
+
+// flagWasSet reports whether any of the named flags was explicitly provided.
+func flagWasSet(fs *flag.FlagSet, names ...string) bool {
+	found := false
+	fs.Visit(func(f *flag.Flag) {
+		for _, name := range names {
+			if f.Name == name {
+				found = true
+			}
+		}
+	})
+	return found
 }
